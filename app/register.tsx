@@ -1,6 +1,5 @@
-import { registerUser } from "@/services/authService";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { Link, useRouter } from "expo-router";
+import React, { useState } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -20,29 +19,32 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+  }>({});
+
+  const validate = () => {
+    const e: typeof errors = {};
+    if (!name.trim()) e.name = "Full name is required.";
+    else if (name.trim().length < 2) e.name = "Name is too short.";
+    if (!email.trim()) e.email = "Email is required.";
+    else if (!/\S+@\S+\.\S+/.test(email)) e.email = "Enter a valid email.";
+    if (!password) e.password = "Password is required.";
+    else if (password.length < 6) e.password = "At least 6 characters.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const handleRegister = async () => {
-    setError("");
-    if (!name.trim()) {
-      setError("Full name is required.");
-      return;
-    }
-    if (!email.trim()) {
-      setError("Email is required.");
-      return;
-    }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-
+    if (!validate()) return;
     setLoading(true);
     try {
-      await registerUser(name, email, password);
+      // TODO: await authService.register(name, email, password);
       router.replace("/(tabs)");
-    } catch (e: any) {
-      setError(e.message || "Registration failed. Please try again.");
+    } catch (err: any) {
+      setErrors({ email: err.message || "Registration failed. Try again." });
     } finally {
       setLoading(false);
     }
@@ -53,16 +55,12 @@ export default function RegisterScreen() {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── HERO ── */}
+      <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
+        {/* ── Header ── */}
         <View style={styles.hero}>
           <View style={styles.logoWrap}>
             <Image
-              source={require("@/assets/images/icon.png")}
+              source={require("@/assets/images/logo.png")}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -71,59 +69,51 @@ export default function RegisterScreen() {
           <Text style={styles.tagline}>Find it. Share it. Save together.</Text>
         </View>
 
-        {/* ── FORM CARD ── */}
-        <View style={styles.card}>
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
+        {/* ── Form ── */}
+        <View style={styles.form}>
           <Text style={styles.label}>Full name</Text>
           <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={(t) => {
-              setName(t);
-              setError("");
-            }}
+            style={[styles.input, errors.name && styles.inputError]}
             placeholder="Your name"
             placeholderTextColor="#BDBDBD"
+            value={name}
+            onChangeText={setName}
             autoCapitalize="words"
-            autoComplete="name"
           />
+          {errors.name ? (
+            <Text style={styles.errorText}>{errors.name}</Text>
+          ) : null}
 
           <Text style={styles.label}>Email</Text>
           <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={(t) => {
-              setEmail(t);
-              setError("");
-            }}
+            style={[styles.input, errors.email && styles.inputError]}
             placeholder="yourname@gmail.com"
             placeholderTextColor="#BDBDBD"
+            value={email}
+            onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            autoComplete="email"
+            autoCorrect={false}
           />
+          {errors.email ? (
+            <Text style={styles.errorText}>{errors.email}</Text>
+          ) : null}
 
           <Text style={styles.label}>Password</Text>
           <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={(t) => {
-              setPassword(t);
-              setError("");
-            }}
+            style={[styles.input, errors.password && styles.inputError]}
             placeholder="at least 6 characters"
             placeholderTextColor="#BDBDBD"
+            value={password}
+            onChangeText={setPassword}
             secureTextEntry
-            autoComplete="new-password"
           />
+          {errors.password ? (
+            <Text style={styles.errorText}>{errors.password}</Text>
+          ) : null}
 
           <TouchableOpacity
-            style={[styles.btn, loading && styles.btnDisabled]}
+            style={[styles.primaryBtn, loading && styles.btnDisabled]}
             onPress={handleRegister}
             disabled={loading}
             activeOpacity={0.85}
@@ -131,106 +121,144 @@ export default function RegisterScreen() {
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.btnText}>Create account</Text>
+              <Text style={styles.primaryBtnText}>Sign up</Text>
             )}
           </TouchableOpacity>
 
-          <View style={styles.loginRow}>
-            <Text style={styles.loginText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.push("/login")}>
-              <Text style={styles.loginLink}>Login</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.switchText}>
+            Already have an account?{" "}
+            <Link href="/login" asChild>
+              <Text style={styles.linkText}>Login</Text>
+            </Link>
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const GREEN = "#3ECFB2";
+const PRIMARY = "#4ECBA4";
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F7F7F7" },
-  scroll: { flexGrow: 1 },
+  root: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  scroll: {
+    flexGrow: 1,
+  },
 
-  // Hero
+  /* Hero */
   hero: {
-    backgroundColor: GREEN,
+    backgroundColor: PRIMARY,
     alignItems: "center",
-    paddingTop: 64,
+    paddingTop: 60,
     paddingBottom: 48,
-    borderBottomLeftRadius: 36,
-    borderBottomRightRadius: 36,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
   },
   logoWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    backgroundColor: "#fff",
-    justifyContent: "center",
+    marginBottom: 16,
+  },
+
+  /* Header */
+  header: {
+    backgroundColor: PRIMARY,
     alignItems: "center",
-    marginBottom: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingTop: 60,
+    paddingBottom: 48,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
   },
-  logo: { width: 48, height: 48 },
-  appName: { fontSize: 26, fontWeight: "700", color: "#fff", marginBottom: 4 },
-  tagline: { fontSize: 13, color: "rgba(255,255,255,0.8)" },
-
-  // Card
-  card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 24,
-    marginTop: -24,
+  logoPlaceholder: {
+    width: 80,
+    height: 80,
     borderRadius: 20,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-    marginBottom: 32,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    marginBottom: 16,
   },
-  errorBox: {
-    backgroundColor: "#FEE2E2",
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 14,
+  logo: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
   },
-  errorText: { color: "#B91C1C", fontSize: 13 },
-
-  label: {
+  appName: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 0.5,
+  },
+  tagline: {
     fontSize: 14,
-    fontWeight: "500",
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 8,
+    fontWeight: "400",
+  },
+  brandName: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#fff",
+    letterSpacing: 0.5,
+  },
+
+  /* Form */
+  form: {
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 40,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
     color: "#333",
     marginBottom: 6,
-    marginTop: 12,
+    marginTop: 16,
   },
   input: {
-    borderWidth: 1,
+    height: 48,
+    borderWidth: 1.5,
     borderColor: "#E0E0E0",
     borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 12,
     fontSize: 14,
     color: "#222",
     backgroundColor: "#FAFAFA",
   },
-
-  btn: {
-    backgroundColor: "#222",
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 20,
+  inputError: {
+    borderColor: "#E53935",
   },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  errorText: {
+    fontSize: 11,
+    color: "#E53935",
+    marginTop: 4,
+  },
 
-  loginRow: { flexDirection: "row", justifyContent: "center", marginTop: 16 },
-  loginText: { fontSize: 13, color: "#888" },
-  loginLink: { fontSize: 13, color: "#222", fontWeight: "700" },
+  /* Buttons */
+  primaryBtn: {
+    height: 50,
+    backgroundColor: "#222",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 28,
+  },
+  btnDisabled: {
+    opacity: 0.6,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  switchText: {
+    textAlign: "center",
+    marginTop: 18,
+    fontSize: 13,
+    color: "#666",
+  },
+  linkText: {
+    color: "#222",
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
 });
