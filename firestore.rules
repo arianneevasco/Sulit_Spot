@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // POSTS — public read, auth create, owner modify
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 3
+        && request.resource.data.category in ['Food', 'Item', 'Tip'];
+      allow update:
+        if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      // COMMENTS subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow delete: if request.auth != null
+          && resource.data.userId == request.auth.uid;
+      }
+
+      // RATINGS — one per user (document ID = userId)
+      match /ratings/{userId} {
+        allow read: if true;
+        allow write: if request.auth != null
+          && request.auth.uid == userId;
+      }
+    }
+
+    // CONFIRMATIONS — one per user per post
+    match /confirmations/{voteId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.vote in ['accurate', 'outdated'];
+    }
+
+    // REPORTS — auth read, one per user
+    match /reports/{reportId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    // USERS — own document only
+    match /users/{userId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+      // Trust system: allow Cloud Function to update trust/accuracy fields
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['accurateCount', 'outdatedCount', 'reportCount',
+                    'ratingAverage', 'ratingCount', 'updatedAt']);
+    }
+  }
+}

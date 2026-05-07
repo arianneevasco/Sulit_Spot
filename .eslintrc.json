@@ -1,0 +1,12 @@
+{
+  "extends": "expo",
+  "plugins": ["import"],
+  "settings": {
+    "import/resolver": {
+      "babel-module": {},
+      "node": {
+        "extensions": [".js", ".jsx", ".ts", ".tsx", ".d.ts"]
+      }
+    }
+  }
+}
