@@ -2,120 +2,97 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const MOCK_POST = {
-  id: "1",
-  title: "Siomai rice for 50 pesos with 10 pcs",
-  category: "Food",
-  priceRange: "50",
-  locationText: "Near Gate 2",
-  description:
-    "Busog na busog ang portion — sulit talaga para sa mga budget students. Luto fresh every morning, available until 2PM lang!",
-  ratingAverage: 4.5,
-  accurateCount: 8,
-  outdatedCount: 1,
-  isOutdated: false,
-  authorName: "Arianne Evasco",
-  authorInitial: "A",
-  postedAgo: "2h ago",
-  isOwner: true,
-};
+const PRIMARY = "#4ECBA4";
+const DANGER = "#EF4444";
+const WARNING_BG = "#FFF8E7";
+const WARNING_BD = "#F6A94A";
+const CATEGORIES = ["Food", "Items", "Tips"] as const;
+type Category = (typeof CATEGORIES)[number];
 
-const MOCK_COMMENTS = [
-  {
-    id: "c1",
-    authorName: "Maria S.",
-    authorInitial: "M",
-    text: "Confirmed! Still 50 pesos as of today. Very filling too.",
-    createdAgo: "1h ago",
-  },
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
+const CATEGORY_COLORS: Record<Category, string> = {
   Food: "#4ECBA4",
-  Item: "#5B9CF6",
-  Tip: "#F6A94A",
   Items: "#5B9CF6",
   Tips: "#F6A94A",
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function InitialAvatar({
-  initial,
-  color = "#4ECBA4",
-}: {
-  initial: string;
-  color?: string;
-}) {
-  return (
-    <View style={[avatarStyles.circle, { backgroundColor: color }]}>
-      <Text style={avatarStyles.text}>{initial}</Text>
-    </View>
-  );
-}
-const avatarStyles = StyleSheet.create({
-  circle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  text: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-});
+// Mock existing post data — replace with real fetch using id
+const MOCK_POST = {
+  title: "Siomai rice",
+  category: "Food" as Category,
+  priceRange: "40 - 60 Pesos",
+  locationText: "Labella Luna Hotel side",
+  description: "Busog na busog ang portion - sulit talaga",
+  isOlderThan7Days: true,
+};
 
-// ─── Post Detail Screen ───────────────────────────────────────────────────────
-export default function PostDetailScreen() {
+export default function EditPostScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
 
-  const post = MOCK_POST; // TODO: replace with usePosts(id)
-  const comments = MOCK_COMMENTS;
+  const [title, setTitle] = useState(MOCK_POST.title);
+  const [category, setCategory] = useState<Category>(MOCK_POST.category);
+  const [priceRange, setPriceRange] = useState(MOCK_POST.priceRange);
+  const [location, setLocation] = useState(MOCK_POST.locationText);
+  const [description, setDescription] = useState(MOCK_POST.description);
+  const [loading, setLoading] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const [comment, setComment] = useState("");
-  const [userVote, setUserVote] = useState<"accurate" | "outdated" | null>(
-    null,
-  );
-  const [accurateCount, setAccurateCount] = useState(post.accurateCount);
-  const [outdatedCount, setOutdatedCount] = useState(post.outdatedCount);
+  const showWarning = MOCK_POST.isOlderThan7Days && !dismissed;
 
-  const badgeColor = CATEGORY_COLORS[post.category] ?? "#aaa";
-
-  const handleAccurate = () => {
-    if (userVote === "accurate") return;
-    setAccurateCount((n) => n + 1);
-    if (userVote === "outdated") setOutdatedCount((n) => n - 1);
-    setUserVote("accurate");
+  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!title.trim()) e.title = "Title is required.";
+    if (!location.trim()) e.location = "Location is required.";
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const handleOutdated = () => {
-    if (userVote === "outdated") return;
-    setOutdatedCount((n) => n + 1);
-    if (userVote === "accurate") setAccurateCount((n) => n - 1);
-    setUserVote("outdated");
+  const handleSave = async () => {
+    if (!validate()) return;
+    setLoading(true);
+    try {
+      // TODO: await postService.updatePost(id, { title, category, priceRange, location, description });
+      await new Promise((r) => setTimeout(r, 700));
+      Alert.alert("Saved!", "Your post has been updated.", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not save changes.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSendComment = () => {
-    if (!comment.trim()) return;
-    // TODO: commentService.addComment(post.id, comment)
-    setComment("");
-    Alert.alert("Comment added!");
+  const handleArchive = () => {
+    Alert.alert(
+      "Archive Post",
+      "This will hide your post from the feed. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Archive",
+          style: "destructive",
+          onPress: async () => {
+            // TODO: await postService.archivePost(id);
+            router.replace("/(tabs)/myposts");
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -123,241 +100,181 @@ export default function PostDetailScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={80}
       >
-        {/* ── Header ── */}
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
             style={styles.backBtn}
+            onPress={() => router.back()}
             activeOpacity={0.8}
           >
-            <Ionicons name="chevron-back" size={22} color="#fff" />
+            <Ionicons name="chevron-back" size={20} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Post Detail</Text>
+          <Text style={styles.headerTitle}>Edit Post</Text>
           <View style={{ width: 36 }} />
         </View>
 
         <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Post Card ── */}
-          <View style={styles.postCard}>
-            {/* Category badge */}
-            <View
-              style={[styles.categoryBadge, { backgroundColor: badgeColor }]}
-            >
-              <Text style={styles.categoryBadgeText}>{post.category}</Text>
-            </View>
-
-            <Text style={styles.postTitle}>{post.title}</Text>
-
-            <View style={styles.postMeta}>
-              <View style={styles.metaItem}>
-                <Ionicons name="location-outline" size={14} color="#888" />
-                <Text style={styles.metaText}>{post.locationText}</Text>
+          {/* Accuracy warning banner */}
+          {showWarning && (
+            <View style={styles.warningCard}>
+              <View style={styles.warningTop}>
+                <Ionicons name="warning-outline" size={18} color={WARNING_BD} />
+                <Text style={styles.warningTitle}>Is this still accurate?</Text>
               </View>
-              {post.priceRange ? (
-                <View style={styles.metaItem}>
-                  <Text style={styles.pesoSign}>₱</Text>
-                  <Text style={styles.metaText}>{post.priceRange}</Text>
-                </View>
+              <Text style={styles.warningBody}>
+                This post is 7+ days old. Confirm it is still correct or archive
+                it.
+              </Text>
+              <View style={styles.warningActions}>
+                <TouchableOpacity
+                  style={styles.stillAccurateBtn}
+                  onPress={() => setDismissed(true)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="checkmark" size={14} color="#fff" />
+                  <Text style={styles.stillAccurateTxt}>Still accurate</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.archiveInsteadBtn}
+                  onPress={handleArchive}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="archive-outline" size={14} color={DANGER} />
+                  <Text style={styles.archiveInsteadTxt}>Archive instead</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Title */}
+          <Text style={styles.label}>Title</Text>
+          <TextInput
+            style={[styles.input, errors.title && styles.inputError]}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Post title"
+            placeholderTextColor="#BDBDBD"
+          />
+          {errors.title ? (
+            <Text style={styles.errText}>{errors.title}</Text>
+          ) : null}
+
+          {/* Category */}
+          <Text style={styles.label}>Category</Text>
+          <View style={styles.catRow}>
+            {CATEGORIES.map((cat) => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.catBtn,
+                  category === cat && {
+                    backgroundColor: CATEGORY_COLORS[cat],
+                    borderColor: CATEGORY_COLORS[cat],
+                  },
+                ]}
+                onPress={() => setCategory(cat)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.catText,
+                    category === cat && { color: "#fff" },
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Price + Location */}
+          <View style={styles.row2}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Price range</Text>
+              <TextInput
+                style={styles.input}
+                value={priceRange}
+                onChangeText={setPriceRange}
+                placeholder="e.g 40-50"
+                placeholderTextColor="#BDBDBD"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Location</Text>
+              <TextInput
+                style={[styles.input, errors.location && styles.inputError]}
+                value={location}
+                onChangeText={setLocation}
+                placeholder="e.g Near Gate 2"
+                placeholderTextColor="#BDBDBD"
+              />
+              {errors.location ? (
+                <Text style={styles.errText}>{errors.location}</Text>
               ) : null}
             </View>
           </View>
 
-          {/* ── Map Placeholder ── */}
-          <TouchableOpacity style={styles.mapPlaceholder} activeOpacity={0.8}>
-            <View style={styles.mapIconBg}>
-              <Ionicons name="location" size={26} color="#4ECBA4" />
-            </View>
-            <Text style={styles.mapLabel}>Map View</Text>
-          </TouchableOpacity>
-
-          {/* ── Description ── */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.descriptionText}>{post.description}</Text>
-          </View>
-
-          {/* ── Trust Signals ── */}
-          <View style={styles.trustCard}>
-            <Text style={styles.trustTitle}>Trust signals</Text>
-
-            <View style={styles.trustButtons}>
-              {/* Still Accurate */}
-              <TouchableOpacity
-                style={[
-                  styles.trustBtn,
-                  styles.trustBtnAccurate,
-                  userVote === "accurate" && styles.trustBtnAccurateActive,
-                ]}
-                onPress={handleAccurate}
-                activeOpacity={0.85}
-              >
-                <Ionicons
-                  name="checkmark"
-                  size={15}
-                  color={userVote === "accurate" ? "#fff" : "#4ECBA4"}
-                />
-                <Text
-                  style={[
-                    styles.trustBtnText,
-                    { color: userVote === "accurate" ? "#fff" : "#4ECBA4" },
-                  ]}
-                >
-                  Still accurate {accurateCount > 0 ? `(${accurateCount})` : ""}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Outdated */}
-              <TouchableOpacity
-                style={[
-                  styles.trustBtn,
-                  styles.trustBtnOutdated,
-                  userVote === "outdated" && styles.trustBtnOutdatedActive,
-                ]}
-                onPress={handleOutdated}
-                activeOpacity={0.85}
-              >
-                <Ionicons
-                  name="close"
-                  size={15}
-                  color={userVote === "outdated" ? "#fff" : "#E53935"}
-                />
-                <Text
-                  style={[
-                    styles.trustBtnText,
-                    { color: userVote === "outdated" ? "#fff" : "#E53935" },
-                  ]}
-                >
-                  Outdated {outdatedCount > 0 ? `(${outdatedCount})` : ""}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Star rating */}
-            <View style={styles.starsRow}>
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Ionicons
-                  key={i}
-                  name={
-                    i <= Math.round(post.ratingAverage)
-                      ? "star"
-                      : "star-outline"
-                  }
-                  size={14}
-                  color="#F6A94A"
-                />
-              ))}
-              <Text style={styles.ratingLabel}>
-                {post.ratingAverage.toFixed(1)} ratings
-              </Text>
-            </View>
-
-            {/* Repost */}
-            <TouchableOpacity style={styles.repostBtn} activeOpacity={0.85}>
-              <Text style={styles.repostBtnText}>Repost Post</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── Comments ── */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Comments ({comments.length})
-            </Text>
-
-            {comments.map((c) => (
-              <View key={c.id} style={styles.commentRow}>
-                <InitialAvatar initial={c.authorInitial} color="#4ECBA4" />
-                <View style={styles.commentBubble}>
-                  <Text style={styles.commentAuthor}>{c.authorName}</Text>
-                  <Text style={styles.commentText}>{c.text}</Text>
-                </View>
-              </View>
-            ))}
-
-            {/* Author meta + actions */}
-            {post.isOwner && (
-              <View style={styles.ownerRow}>
-                <InitialAvatar initial={post.authorInitial} color="#5B9CF6" />
-                <View style={styles.ownerMeta}>
-                  <Text style={styles.ownerName}>{post.authorName}</Text>
-                  <Text style={styles.ownerAgo}>Posted {post.postedAgo}</Text>
-                </View>
-                <View style={styles.ownerActions}>
-                  <TouchableOpacity
-                    style={[styles.ownerBtn, styles.editBtn]}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/post/[id]",
-                        params: { id: post.id, mode: "edit" },
-                      })
-                    }
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.ownerBtn, styles.archiveBtn]}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      Alert.alert("Archive Post", "Archive this post?", [
-                        { text: "Cancel" },
-                        { text: "Archive", style: "destructive" },
-                      ])
-                    }
-                  >
-                    <Text style={styles.archiveBtnText}>Archive</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-
-          <View style={{ height: 20 }} />
-        </ScrollView>
-
-        {/* ── Comment Input ── */}
-        <View style={styles.commentInputRow}>
+          {/* Description */}
+          <Text style={styles.label}>Description</Text>
           <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment....."
+            style={[styles.input, styles.textArea]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Describe the find in detail..."
             placeholderTextColor="#BDBDBD"
-            value={comment}
-            onChangeText={setComment}
             multiline
+            numberOfLines={4}
+            textAlignVertical="top"
           />
+
+          {/* Save */}
           <TouchableOpacity
-            style={[styles.sendBtn, !comment.trim() && styles.sendBtnDisabled]}
-            onPress={handleSendComment}
-            disabled={!comment.trim()}
-            activeOpacity={0.8}
+            style={[styles.saveBtn, loading && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={loading}
+            activeOpacity={0.85}
           >
-            <Ionicons
-              name="send"
-              size={18}
-              color={comment.trim() ? "#4ECBA4" : "#ccc"}
-            />
+            {loading ? (
+              <ActivityIndicator color="#1A1A1A" />
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={18}
+                  color="#1A1A1A"
+                />
+                <Text style={styles.saveTxt}>Save changes</Text>
+              </>
+            )}
           </TouchableOpacity>
-        </View>
+
+          {/* Archive */}
+          <TouchableOpacity
+            style={styles.archiveBtn}
+            onPress={handleArchive}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="archive-outline" size={16} color={DANGER} />
+            <Text style={styles.archiveTxt}>Archive post</Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 32 }} />
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#F5F6FA",
-  },
+  safe: { flex: 1, backgroundColor: "#F5F6FA" },
 
-  /* Header */
   header: {
-    backgroundColor: "#4ECBA4",
+    backgroundColor: PRIMARY,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -373,140 +290,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#fff",
-  },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: "#fff" },
 
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16 },
+  content: { padding: 20 },
 
-  /* Post card */
-  postCard: {
-    backgroundColor: "#fff",
+  /* Warning banner */
+  warningCard: {
+    backgroundColor: WARNING_BG,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  categoryBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  categoryBadgeText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  postTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#1A1A1A",
-    lineHeight: 22,
-    marginBottom: 10,
-  },
-  postMeta: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  metaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  metaText: {
-    fontSize: 13,
-    color: "#666",
-  },
-  pesoSign: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#888",
-  },
-
-  /* Map */
-  mapPlaceholder: {
-    backgroundColor: "#E8F5F0",
-    borderRadius: 16,
-    height: 90,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginBottom: 12,
     borderWidth: 1.5,
-    borderColor: "#C5E8DC",
-    borderStyle: "dashed",
-  },
-  mapIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(78,203,164,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  mapLabel: {
-    fontSize: 13,
-    color: "#4ECBA4",
-    fontWeight: "600",
-  },
-
-  /* Sections */
-  section: {
-    marginBottom: 14,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#1A1A1A",
-    marginBottom: 10,
-  },
-  descriptionText: {
-    fontSize: 14,
-    color: "#555",
-    lineHeight: 22,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-
-  /* Trust card */
-  trustCard: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    borderColor: WARNING_BD,
     padding: 16,
-    marginBottom: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    marginBottom: 8,
   },
-  trustTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#1A1A1A",
+  warningTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 6,
+  },
+  warningTitle: { fontSize: 14, fontWeight: "800", color: "#B45309" },
+  warningBody: {
+    fontSize: 13,
+    color: "#92400E",
+    lineHeight: 18,
     marginBottom: 12,
   },
-  trustButtons: {
+  warningActions: { flexDirection: "row", gap: 10 },
+  stillAccurateBtn: {
+    flex: 1,
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: PRIMARY,
   },
-  trustBtn: {
+  stillAccurateTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  archiveInsteadBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -515,168 +337,72 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1.5,
+    borderColor: DANGER,
+    backgroundColor: "#FFF",
   },
-  trustBtnAccurate: {
-    borderColor: "#4ECBA4",
-    backgroundColor: "rgba(78,203,164,0.06)",
-  },
-  trustBtnAccurateActive: {
-    backgroundColor: "#4ECBA4",
-    borderColor: "#4ECBA4",
-  },
-  trustBtnOutdated: {
-    borderColor: "#E53935",
-    backgroundColor: "rgba(229,57,53,0.06)",
-  },
-  trustBtnOutdatedActive: {
-    backgroundColor: "#E53935",
-    borderColor: "#E53935",
-  },
-  trustBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  starsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    marginBottom: 12,
-  },
-  ratingLabel: {
-    fontSize: 12,
-    color: "#888",
-    marginLeft: 4,
-  },
-  repostBtn: {
-    borderWidth: 1.5,
-    borderColor: "#1A1A1A",
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  repostBtnText: {
+  archiveInsteadTxt: { color: DANGER, fontWeight: "700", fontSize: 13 },
+
+  label: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#1A1A1A",
+    color: "#444",
+    marginBottom: 7,
+    marginTop: 18,
   },
 
-  /* Comments */
-  commentRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-    alignItems: "flex-start",
+  input: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E5E5",
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 14,
+    color: "#222",
   },
-  commentBubble: {
+  inputError: { borderColor: DANGER },
+  textArea: { height: 100, paddingTop: 12 },
+  errText: { fontSize: 11, color: DANGER, marginTop: 4 },
+
+  catRow: { flexDirection: "row", gap: 10 },
+  catBtn: {
     flex: 1,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#E5E5E5",
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  catText: { fontSize: 13, fontWeight: "700", color: "#888" },
+
+  row2: { flexDirection: "row", gap: 12 },
+
+  saveBtn: {
     backgroundColor: "#fff",
     borderRadius: 14,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  commentAuthor: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#1A1A1A",
-    marginBottom: 3,
-  },
-  commentText: {
-    fontSize: 13,
-    color: "#555",
-    lineHeight: 19,
-  },
-
-  /* Owner row */
-  ownerRow: {
+    height: 52,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    marginTop: 4,
-  },
-  ownerMeta: {
-    flex: 1,
-  },
-  ownerName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#1A1A1A",
-  },
-  ownerAgo: {
-    fontSize: 11,
-    color: "#999",
-    marginTop: 1,
-  },
-  ownerActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  ownerBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1.5,
-  },
-  editBtn: {
-    borderColor: "#1A1A1A",
-    backgroundColor: "#fff",
-  },
-  editBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#1A1A1A",
-  },
-  archiveBtn: {
-    borderColor: "#E53935",
-    backgroundColor: "#fff",
-  },
-  archiveBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#E53935",
-  },
-
-  /* Comment input */
-  commentInputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    gap: 10,
-  },
-  commentInput: {
-    flex: 1,
-    minHeight: 42,
-    maxHeight: 100,
-    backgroundColor: "#F5F6FA",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: "#333",
-    borderWidth: 1.5,
-    borderColor: "#E5E5E5",
-  },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#F5F6FA",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    marginTop: 28,
+    borderWidth: 2,
+    borderColor: "#1A1A1A",
+  },
+  saveTxt: { color: "#1A1A1A", fontSize: 15, fontWeight: "800" },
+
+  archiveBtn: {
+    borderRadius: 14,
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
     borderWidth: 1.5,
-    borderColor: "#E5E5E5",
+    borderColor: DANGER,
+    backgroundColor: "#FFF5F5",
   },
-  sendBtnDisabled: {
-    opacity: 0.5,
-  },
+  archiveTxt: { color: DANGER, fontSize: 15, fontWeight: "700" },
 });
