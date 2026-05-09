@@ -7,20 +7,34 @@ import { addComment } from "@/services/commentService";
 import { reportPost, voteAccuracy } from "@/services/postService";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
+const [MapView, setMapView] = useState<any>(null);
+const [Marker, setMarker] = useState<any>(null);
+
+useEffect(() => {
+  if (Platform.OS !== "web") {
+    // Dynamically import react-native-maps only on native
+    import("react-native-maps").then((maps) => {
+      setMapView(() => maps.default);
+      setMarker(() => maps.Marker);
+    });
+  }
+}, []);
 
 const PRIMARY = "#4ECBA4";
 const DANGER = "#EF4444";
@@ -58,6 +72,17 @@ const sk = StyleSheet.create({
 });
 
 export default function DetailScreen() {
+  // Dynamically import MapView and Marker only on native platforms
+  const [MapView, setMapView] = useState<any>(null);
+  const [Marker, setMarker] = useState<any>(null);
+  React.useEffect(() => {
+    if (Platform.OS !== "web") {
+      import("react-native-maps").then((maps) => {
+        setMapView(() => maps.default);
+        setMarker(() => maps.Marker);
+      });
+    }
+  }, []);
   const router = useRouter();
   const { postId } = useLocalSearchParams<{ postId: string }>();
   const { user } = useAuth();
@@ -301,17 +326,58 @@ export default function DetailScreen() {
               <Text style={styles.description}>{post.description}</Text>
             </View>
 
-            {/* ── Map pin placeholder ── */}
+            {/* ── Map pin (real MapView) ── */}
             {post.latitude && post.longitude && (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Location</Text>
                 <View style={styles.mapBox}>
-                  <View style={styles.mapGrid} />
-                  <View style={styles.mapPinWrap}>
-                    <Ionicons name="location" size={28} color={PRIMARY} />
-                    <View style={styles.mapPinDot} />
-                  </View>
-                  <Text style={styles.mapLabel}>Map view</Text>
+                  {Platform.OS !== "web" && MapView && Marker ? (
+                    <MapView
+                      style={StyleSheet.absoluteFillObject}
+                      region={{
+                        latitude: post.latitude,
+                        longitude: post.longitude,
+                        latitudeDelta: 0.003,
+                        longitudeDelta: 0.003,
+                      }}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      pitchEnabled={false}
+                      rotateEnabled={false}
+                    >
+                      <Marker
+                        coordinate={{
+                          latitude: post.latitude,
+                          longitude: post.longitude,
+                        }}
+                        pinColor={PRIMARY}
+                      />
+                    </MapView>
+                  ) : (
+                    <View
+                      style={[
+                        {
+                          flex: 1,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        },
+                      ]}
+                    >
+                      <Text>Map preview not available on web</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.mapDirectionsBtn}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      Linking.openURL(
+                        `https://maps.google.com/?q=${post.latitude},${post.longitude}`,
+                      )
+                    }
+                  >
+                    <Ionicons name="navigate-outline" size={13} color="#fff" />
+                    <Text style={styles.mapDirectionsBtnText}>Directions</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -626,33 +692,27 @@ const styles = StyleSheet.create({
 
   /* Map box */
   mapBox: {
-    height: 120,
+    height: 160,
     borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: "#E8F8F3",
-    alignItems: "center",
-    justifyContent: "center",
     position: "relative",
   },
-  mapGrid: {
-    inset: 0,
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.25,
-  },
-  mapPinWrap: { alignItems: "center", zIndex: 1 },
-  mapPinDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: PRIMARY,
-    marginTop: -2,
-  },
-  mapLabel: {
+  mapDirectionsBtn: {
     position: "absolute",
-    bottom: 6,
+    bottom: 10,
     right: 10,
-    fontSize: 10,
-    color: "#aaa",
+    backgroundColor: "#1A1A1ACC",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  mapDirectionsBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
 
   /* Trust */

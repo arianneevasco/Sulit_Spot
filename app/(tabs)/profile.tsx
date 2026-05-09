@@ -1,71 +1,76 @@
+import { logoutUser } from "@/services/authService";
+import { auth, db } from "@/services/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import {
+  collection,
+  getCountFromServer,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
 const PRIMARY = "#4ECBA4";
-const GRAY_BG = "#F5F6FA";
 
-// Mock user — replace with useAuth()
-const MOCK_USER = {
-  name: "Ariana Grande",
-  email: "arianagrande@gmail.com",
-  postsShared: 3,
-  avgRating: 4.5,
-  initial: "A",
-};
+type UserStats = { postsCount: number; avgRating: number };
 
-type MenuRowProps = {
-  icon: string;
-  label: string;
-  onPress: () => void;
-  danger?: boolean;
-  trailing?: React.ReactNode;
-};
+async function fetchUserStats(uid: string): Promise<UserStats> {
+  try {
+    const postsQ = query(collection(db, "posts"), where("userId", "==", uid));
+    const countSnap = await getCountFromServer(postsQ);
+    const postsCount = countSnap.data().count;
 
-function MenuRow({
-  icon,
-  label,
-  onPress,
-  danger = false,
-  trailing,
-}: MenuRowProps) {
-  return (
-    <TouchableOpacity
-      style={styles.menuRow}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
-      <View style={[styles.menuIconBg, danger && styles.menuIconBgDanger]}>
-        <Ionicons
-          name={icon as any}
-          size={18}
-          color={danger ? "#EF4444" : PRIMARY}
-        />
-      </View>
-      <Text style={[styles.menuLabel, danger && styles.menuLabelDanger]}>
-        {label}
-      </Text>
-      <View style={styles.menuTrailing}>
-        {trailing ?? <Ionicons name="chevron-forward" size={16} color="#CCC" />}
-      </View>
-    </TouchableOpacity>
-  );
+    const docsSnap = await getDocs(postsQ);
+    let totalRating = 0;
+    let ratingCount = 0;
+    docsSnap.forEach((doc) => {
+      const d = doc.data();
+      if (typeof d.avgRating === "number" && d.ratingCount > 0) {
+        totalRating += d.avgRating * d.ratingCount;
+        ratingCount += d.ratingCount;
+      }
+    });
+
+    return {
+      postsCount,
+      avgRating: ratingCount > 0 ? totalRating / ratingCount : 0,
+    };
+  } catch {
+    return { postsCount: 0, avgRating: 0 };
+  }
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [notifEnabled, setNotifEnabled] = useState(true);
+  const user = auth.currentUser;
+  const displayName = user?.displayName ?? "User";
+  const email = user?.email ?? "";
+
+  const [stats, setStats] = useState<UserStats>({
+    postsCount: 0,
+    avgRating: 0,
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchUserStats(user.uid).then((s) => {
+      setStats(s);
+      setStatsLoading(false);
+    });
+  }, [user?.uid]);
 
   const handleLogout = () => {
     Alert.alert("Log out", "Are you sure you want to log out?", [
@@ -74,8 +79,15 @@ export default function ProfileScreen() {
         text: "Log out",
         style: "destructive",
         onPress: async () => {
-          // TODO: await authService.logout();
-          router.replace("/login");
+          setLoggingOut(true);
+          try {
+            await logoutUser();
+            router.replace("/login");
+          } catch (e: any) {
+            Alert.alert("Error", e.message || "Failed to log out.");
+          } finally {
+            setLoggingOut(false);
+          }
         },
       },
     ]);
@@ -83,267 +95,227 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="chevron-back" size={20} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={{ width: 36 }} />
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        {/* ── Avatar card ── */}
-        <View style={styles.avatarSection}>
-          {/* Avatar circle */}
+        {/* ── Green banner ── */}
+        <View style={styles.banner}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chevron-back" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Avatar (overlapping banner) ── */}
+        <View style={styles.avatarWrap}>
           <View style={styles.avatarRing}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitial}>{MOCK_USER.initial}</Text>
+              <Ionicons name="person-outline" size={44} color="#aaa" />
             </View>
           </View>
+        </View>
 
-          <Text style={styles.userName}>{MOCK_USER.name}</Text>
-          <Text style={styles.userEmail}>{MOCK_USER.email}</Text>
+        {/* ── Name & email ── */}
+        <View style={styles.nameSection}>
+          <Text style={styles.displayName}>{displayName}</Text>
+          <Text style={styles.emailText}>{email}</Text>
+        </View>
 
-          {/* Stats row */}
-          <View style={styles.statsRow}>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>{MOCK_USER.postsShared}</Text>
-              <Text style={styles.statLabel}>Posts shared</Text>
+        {/* ── Stats ── */}
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>
+              {statsLoading ? "—" : stats.postsCount}
+            </Text>
+            <Text style={styles.statLabel}>Posts shared</Text>
+          </View>
+          <View style={styles.statBox}>
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={14} color="#F6A94A" />
+              <Text style={styles.statValue}>
+                {statsLoading
+                  ? "—"
+                  : stats.avgRating > 0
+                    ? stats.avgRating.toFixed(1)
+                    : "N/A"}
+              </Text>
             </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statBox}>
-              <View style={styles.statRatingRow}>
-                <Ionicons name="star" size={14} color="#F6A94A" />
-                <Text style={styles.statValue}>
-                  {MOCK_USER.avgRating.toFixed(1)}
-                </Text>
-              </View>
-              <Text style={styles.statLabel}>Avg rating</Text>
-            </View>
+            <Text style={styles.statLabel}>Avg rating</Text>
           </View>
         </View>
 
         {/* ── Menu ── */}
-        <View style={styles.menuSection}>
-          <Text style={styles.menuSectionTitle}>Account</Text>
+        <View style={styles.menu}>
+          <TouchableOpacity
+            style={styles.menuRow}
+            onPress={() => router.push("/(tabs)/myposts")}
+            activeOpacity={0.75}
+          >
+            <View style={styles.menuIcon}>
+              <Ionicons name="document-text-outline" size={20} color="#555" />
+            </View>
+            <Text style={styles.menuLabel}>My posts</Text>
+            <Ionicons name="chevron-forward" size={18} color="#CCC" />
+          </TouchableOpacity>
 
-          <View style={styles.menuCard}>
-            <MenuRow
-              icon="document-text-outline"
-              label="My posts"
-              onPress={() => router.push("/(tabs)/myposts")}
-            />
-            <View style={styles.menuDivider} />
-            <MenuRow
-              icon="person-outline"
-              label="Edit profile"
-              onPress={() => router.push("/profile")}
-            />
-            <View style={styles.menuDivider} />
-            <MenuRow
-              icon="notifications-outline"
-              label="Notifications"
-              onPress={() => {}}
-              trailing={
-                <Switch
-                  value={notifEnabled}
-                  onValueChange={setNotifEnabled}
-                  trackColor={{ false: "#E5E5E5", true: `${PRIMARY}80` }}
-                  thumbColor={notifEnabled ? PRIMARY : "#f4f3f4"}
-                />
-              }
-            />
-          </View>
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.menuRow}
+            onPress={() => router.push("/editprofile")}
+            activeOpacity={0.75}
+          >
+            <View style={styles.menuIcon}>
+              <Ionicons name="person-outline" size={20} color="#555" />
+            </View>
+            <Text style={styles.menuLabel}>Edit profile</Text>
+            <Ionicons name="chevron-forward" size={18} color="#CCC" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.menuRow}
+            onPress={() => {}}
+            activeOpacity={0.75}
+          >
+            <View style={styles.menuIcon}>
+              <Ionicons name="notifications-outline" size={20} color="#555" />
+            </View>
+            <Text style={styles.menuLabel}>Notification</Text>
+            <Ionicons name="chevron-forward" size={18} color="#CCC" />
+          </TouchableOpacity>
         </View>
 
-        {/* ── About ── */}
-        <View style={styles.menuSection}>
-          <Text style={styles.menuSectionTitle}>About</Text>
-          <View style={styles.menuCard}>
-            <MenuRow
-              icon="information-circle-outline"
-              label="About Sulit Spot"
-              onPress={() => {}}
-            />
-            <View style={styles.menuDivider} />
-            <MenuRow
-              icon="shield-checkmark-outline"
-              label="Privacy Policy"
-              onPress={() => {}}
-            />
-          </View>
-        </View>
-
-        {/* ── Log out ── */}
-        <View style={[styles.menuSection, { marginTop: 4 }]}>
-          <View style={styles.menuCard}>
-            <TouchableOpacity
-              style={styles.logoutRow}
-              onPress={handleLogout}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuIconBgDanger}>
-                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-              </View>
-              <Text style={styles.logoutText}>Log out</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* App version */}
-        <Text style={styles.version}>Sulit Spot v1.0.0</Text>
+        {/* ── Log out button ── */}
+        <TouchableOpacity
+          style={[styles.logoutBtn, loggingOut && styles.logoutBtnDisabled]}
+          onPress={handleLogout}
+          disabled={loggingOut}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.logoutText}>
+            {loggingOut ? "Logging out…" : "Log out"}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: GRAY_BG },
+  safe: { flex: 1, backgroundColor: "#F5F5F5" },
 
-  /* Header */
-  header: {
+  /* Green banner */
+  banner: {
     backgroundColor: PRIMARY,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
+    height: 120,
     paddingTop: Platform.OS === "android" ? 18 : 10,
-    paddingBottom: 60,
+    paddingHorizontal: 16,
   },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: "#fff" },
 
-  /* Avatar section — overlaps header */
-  avatarSection: {
+  /* Avatar */
+  avatarWrap: {
     alignItems: "center",
-    marginTop: -44,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
+    marginTop: -50,
+    marginBottom: 12,
   },
   avatarRing: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
-    marginBottom: 14,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: PRIMARY,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: "#E8E8E8",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarInitial: { fontSize: 32, fontWeight: "800", color: "#fff" },
 
-  userName: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#1A1A1A",
-    marginBottom: 4,
-  },
-  userEmail: { fontSize: 13, color: "#888", marginBottom: 20 },
+  /* Name */
+  nameSection: { alignItems: "center", marginBottom: 20 },
+  displayName: { fontSize: 18, fontWeight: "700", color: "#1A1A1A" },
+  emailText: { fontSize: 13, color: "#888", marginTop: 3 },
 
   /* Stats */
   statsRow: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    width: "100%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    overflow: "hidden",
+    gap: 12,
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  statBox: { flex: 1, alignItems: "center", paddingVertical: 16, gap: 4 },
-  statDivider: { width: 1, backgroundColor: "#F0F0F0", marginVertical: 12 },
-  statRatingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  statValue: { fontSize: 20, fontWeight: "800", color: "#1A1A1A" },
-  statLabel: { fontSize: 12, color: "#888", fontWeight: "500" },
+  statBox: {
+    flex: 1,
+    backgroundColor: "#EFEFEF",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 4,
+  },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  statValue: { fontSize: 20, fontWeight: "700", color: "#1A1A1A" },
+  statLabel: { fontSize: 12, color: "#888" },
 
-  /* Menu sections */
-  menuSection: { paddingHorizontal: 16, marginBottom: 10 },
-  menuSectionTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#aaa",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  menuCard: {
+  /* Menu */
+  menu: {
+    marginHorizontal: 20,
     backgroundColor: "#fff",
-    borderRadius: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EBEBEB",
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 20,
   },
   menuRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 15,
     gap: 12,
   },
-  menuIconBg: {
+  menuIcon: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: `${PRIMARY}15`,
+    backgroundColor: "#F3F3F3",
     alignItems: "center",
     justifyContent: "center",
   },
-  menuIconBgDanger: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#1A1A1A" },
-  menuLabelDanger: { color: "#EF4444" },
-  menuTrailing: { alignItems: "center", justifyContent: "center" },
-  menuDivider: { height: 1, backgroundColor: "#F5F5F5", marginLeft: 64 },
+  menuLabel: { flex: 1, fontSize: 14, fontWeight: "500", color: "#1A1A1A" },
+  divider: { height: 1, backgroundColor: "#F0F0F0", marginLeft: 64 },
 
   /* Logout */
-  logoutRow: {
-    flexDirection: "row",
+  logoutBtn: {
+    marginHorizontal: 20,
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#1A1A1A",
+    backgroundColor: "#fff",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
+    justifyContent: "center",
   },
-  logoutText: { fontSize: 14, fontWeight: "700", color: "#EF4444", flex: 1 },
-
-  version: { textAlign: "center", fontSize: 12, color: "#CCC", marginTop: 8 },
+  logoutBtnDisabled: { opacity: 0.5 },
+  logoutText: { fontSize: 15, fontWeight: "600", color: "#1A1A1A" },
 });

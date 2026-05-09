@@ -1,16 +1,17 @@
+import { registerUser } from "@/services/authService";
 import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function RegisterScreen() {
@@ -23,6 +24,7 @@ export default function RegisterScreen() {
     name?: string;
     email?: string;
     password?: string;
+    general?: string;
   }>({});
 
   const validate = () => {
@@ -41,10 +43,16 @@ export default function RegisterScreen() {
     if (!validate()) return;
     setLoading(true);
     try {
-      // TODO: await authService.register(name, email, password);
-      router.replace("/(tabs)");
+      await registerUser(name, email, password);
+      // Auth guard in _layout.tsx will redirect to /(tabs) automatically
     } catch (err: any) {
-      setErrors({ email: err.message || "Registration failed. Try again." });
+      const msg =
+        err?.code === "auth/email-already-in-use"
+          ? "An account with this email already exists."
+          : err?.code === "auth/weak-password"
+            ? "Password is too weak. Use at least 6 characters."
+            : err.message || "Registration failed. Try again.";
+      setErrors({ general: msg });
     } finally {
       setLoading(false);
     }
@@ -71,13 +79,22 @@ export default function RegisterScreen() {
 
         {/* ── Form ── */}
         <View style={styles.form}>
+          {errors.general ? (
+            <View style={styles.generalError}>
+              <Text style={styles.generalErrorText}>{errors.general}</Text>
+            </View>
+          ) : null}
+
           <Text style={styles.label}>Full name</Text>
           <TextInput
             style={[styles.input, errors.name && styles.inputError]}
             placeholder="Your name"
             placeholderTextColor="#BDBDBD"
             value={name}
-            onChangeText={setName}
+            onChangeText={(t) => {
+              setName(t);
+              setErrors((e) => ({ ...e, name: undefined }));
+            }}
             autoCapitalize="words"
           />
           {errors.name ? (
@@ -90,7 +107,10 @@ export default function RegisterScreen() {
             placeholder="yourname@gmail.com"
             placeholderTextColor="#BDBDBD"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(t) => {
+              setEmail(t);
+              setErrors((e) => ({ ...e, email: undefined }));
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -105,7 +125,10 @@ export default function RegisterScreen() {
             placeholder="at least 6 characters"
             placeholderTextColor="#BDBDBD"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(t) => {
+              setPassword(t);
+              setErrors((e) => ({ ...e, password: undefined }));
+            }}
             secureTextEntry
           />
           {errors.password ? (
@@ -140,15 +163,8 @@ export default function RegisterScreen() {
 const PRIMARY = "#4ECBA4";
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  scroll: {
-    flexGrow: 1,
-  },
-
-  /* Hero */
+  root: { flex: 1, backgroundColor: "#fff" },
+  scroll: { flexGrow: 1 },
   hero: {
     backgroundColor: PRIMARY,
     alignItems: "center",
@@ -157,56 +173,23 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 40,
     borderBottomRightRadius: 40,
   },
-  logoWrap: {
-    marginBottom: 16,
-  },
-
-  /* Header */
-  header: {
-    backgroundColor: PRIMARY,
-    alignItems: "center",
-    paddingTop: 60,
-    paddingBottom: 48,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-  },
-  logoPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    marginBottom: 16,
-  },
-  logo: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-  },
+  logoWrap: { marginBottom: 16 },
+  logo: { width: 80, height: 80, borderRadius: 20 },
   appName: {
     fontSize: 28,
     fontWeight: "800",
     color: "#fff",
     letterSpacing: 0.5,
   },
-  tagline: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 8,
-    fontWeight: "400",
+  tagline: { fontSize: 14, color: "rgba(255,255,255,0.85)", marginTop: 8 },
+  form: { paddingHorizontal: 28, paddingTop: 32, paddingBottom: 40 },
+  generalError: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
   },
-  brandName: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: 0.5,
-  },
-
-  /* Form */
-  form: {
-    paddingHorizontal: 28,
-    paddingTop: 32,
-    paddingBottom: 40,
-  },
+  generalErrorText: { color: "#B91C1C", fontSize: 13, fontWeight: "500" },
   label: {
     fontSize: 13,
     fontWeight: "600",
@@ -224,16 +207,8 @@ const styles = StyleSheet.create({
     color: "#222",
     backgroundColor: "#FAFAFA",
   },
-  inputError: {
-    borderColor: "#E53935",
-  },
-  errorText: {
-    fontSize: 11,
-    color: "#E53935",
-    marginTop: 4,
-  },
-
-  /* Buttons */
+  inputError: { borderColor: "#E53935" },
+  errorText: { fontSize: 11, color: "#E53935", marginTop: 4 },
   primaryBtn: {
     height: 50,
     backgroundColor: "#222",
@@ -242,14 +217,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 28,
   },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  primaryBtnText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  btnDisabled: { opacity: 0.6 },
+  primaryBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   switchText: {
     textAlign: "center",
     marginTop: 18,
