@@ -297,8 +297,6 @@ export const createPost = async ({
     throw new Error("Title must be at least 3 characters.");
   if (!["Food", "Item", "Tip"].includes(category))
     throw new Error("Category must be Food, Item, or Tip.");
-  if (!priceRange || !priceRange.trim())
-    throw new Error("Price range is required.");
   if (!locationText || !locationText.trim())
     throw new Error("Location is required.");
   if (!description || !description.trim())
