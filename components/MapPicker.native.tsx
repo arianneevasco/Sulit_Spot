@@ -3,14 +3,14 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import React, { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker, Region } from "react-native-maps";
 
@@ -207,6 +207,16 @@ export function MapPreview({
   coord: Coord;
   onDirections: () => void;
 }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopyCoords = () => {
+    const { Clipboard } = require("react-native");
+    const text = `${coord.latitude.toFixed(6)}, ${coord.longitude.toFixed(6)}`;
+    Clipboard.setString(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <View style={styles.previewWrap}>
       <MapView
@@ -219,10 +229,31 @@ export function MapPreview({
       >
         <Marker coordinate={coord} pinColor={PRIMARY} />
       </MapView>
-      <TouchableOpacity style={styles.directionsBtn} onPress={onDirections}>
-        <Ionicons name="navigate-outline" size={13} color="#fff" />
-        <Text style={styles.directionsBtnText}>Directions</Text>
-      </TouchableOpacity>
+      <View style={styles.mapBtnRow}>
+        <TouchableOpacity style={styles.mapActionBtn} onPress={onDirections}>
+          <Ionicons name="navigate-outline" size={14} color="#fff" />
+          <Text style={styles.mapActionBtnText}>Directions</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.mapActionBtn, styles.mapActionBtnSecondary]}
+          onPress={handleCopyCoords}
+        >
+          <Ionicons
+            name={copied ? "checkmark-outline" : "copy-outline"}
+            size={14}
+            color={copied ? PRIMARY : "#333"}
+          />
+          <Text
+            style={[
+              styles.mapActionBtnText,
+              styles.mapActionBtnTextSecondary,
+              copied && { color: PRIMARY },
+            ]}
+          >
+            {copied ? "Copied!" : "Copy coords"}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -295,7 +326,38 @@ const styles = StyleSheet.create({
   confirmBtnDisabled: { opacity: 0.45 },
   confirmBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   miniMap: { height: 140, width: "100%" },
-  previewWrap: { height: 160, position: "relative" },
+  previewWrap: { height: 200, position: "relative" },
+  mapBtnRow: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    gap: 8,
+    zIndex: 10,
+  },
+  mapActionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(26,26,26,0.82)",
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  mapActionBtnSecondary: {
+    backgroundColor: "rgba(255,255,255,0.92)",
+  },
+  mapActionBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  mapActionBtnTextSecondary: {
+    color: "#333",
+  },
   directionsBtn: {
     position: "absolute",
     bottom: 10,

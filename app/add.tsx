@@ -1,4 +1,4 @@
-import MapPicker, { Coord, MapThumbnail } from "@/components/MapPicker.web";
+import MapPicker, { Coord, MapThumbnail } from "@/components/MapPicker";
 import { usePhotoPicker } from "@/hooks/usePhotoPicker";
 import { createPost } from "@/services/postService";
 import { Ionicons } from "@expo/vector-icons";

@@ -1,4 +1,4 @@
-import { MapPreview } from "@/components/MapPicker.web";
+import { MapPreview } from "@/components/MapPicker";
 import StarRating from "@/components/StarRating";
 import { useAuth } from "@/hooks/useAuth";
 import { useComments } from "@/hooks/useComments";

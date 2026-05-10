@@ -1,4 +1,4 @@
-import MapPicker, { Coord, MapThumbnail } from "@/components/MapPicker.web";
+import MapPicker, { Coord, MapThumbnail } from "@/components/MapPicker";
 import { usePhotoPicker } from "@/hooks/usePhotoPicker";
 import { usePostDetail } from "@/hooks/usePostDetails";
 import { archivePost, updatePost } from "@/services/postService";
