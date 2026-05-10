@@ -1,3 +1,4 @@
+import { MapPreview } from "@/components/MapPicker.web";
 import StarRating from "@/components/StarRating";
 import { useAuth } from "@/hooks/useAuth";
 import { useComments } from "@/hooks/useComments";
@@ -7,13 +8,12 @@ import { addComment } from "@/services/commentService";
 import { reportPost, voteAccuracy } from "@/services/postService";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -22,19 +22,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-const [MapView, setMapView] = useState<any>(null);
-const [Marker, setMarker] = useState<any>(null);
-
-useEffect(() => {
-  if (Platform.OS !== "web") {
-    // Dynamically import react-native-maps only on native
-    import("react-native-maps").then((maps) => {
-      setMapView(() => maps.default);
-      setMarker(() => maps.Marker);
-    });
-  }
-}, []);
 
 const PRIMARY = "#4ECBA4";
 const DANGER = "#EF4444";
@@ -72,17 +59,6 @@ const sk = StyleSheet.create({
 });
 
 export default function DetailScreen() {
-  // Dynamically import MapView and Marker only on native platforms
-  const [MapView, setMapView] = useState<any>(null);
-  const [Marker, setMarker] = useState<any>(null);
-  React.useEffect(() => {
-    if (Platform.OS !== "web") {
-      import("react-native-maps").then((maps) => {
-        setMapView(() => maps.default);
-        setMarker(() => maps.Marker);
-      });
-    }
-  }, []);
   const router = useRouter();
   const { postId } = useLocalSearchParams<{ postId: string }>();
   const { user } = useAuth();
@@ -331,53 +307,18 @@ export default function DetailScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Location</Text>
                 <View style={styles.mapBox}>
-                  {Platform.OS !== "web" && MapView && Marker ? (
-                    <MapView
-                      style={StyleSheet.absoluteFillObject}
-                      region={{
-                        latitude: post.latitude,
-                        longitude: post.longitude,
-                        latitudeDelta: 0.003,
-                        longitudeDelta: 0.003,
-                      }}
-                      scrollEnabled={false}
-                      zoomEnabled={false}
-                      pitchEnabled={false}
-                      rotateEnabled={false}
-                    >
-                      <Marker
-                        coordinate={{
-                          latitude: post.latitude,
-                          longitude: post.longitude,
-                        }}
-                        pinColor={PRIMARY}
-                      />
-                    </MapView>
-                  ) : (
-                    <View
-                      style={[
-                        {
-                          flex: 1,
-                          alignItems: "center",
-                          justifyContent: "center",
-                        },
-                      ]}
-                    >
-                      <Text>Map preview not available on web</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    style={styles.mapDirectionsBtn}
-                    activeOpacity={0.85}
-                    onPress={() =>
-                      Linking.openURL(
-                        `https://maps.google.com/?q=${post.latitude},${post.longitude}`,
-                      )
-                    }
-                  >
-                    <Ionicons name="navigate-outline" size={13} color="#fff" />
-                    <Text style={styles.mapDirectionsBtnText}>Directions</Text>
-                  </TouchableOpacity>
+                  <MapPreview
+                    coord={{
+                      latitude: post.latitude,
+                      longitude: post.longitude,
+                    }}
+                    onDirections={() => {
+                      const url = `https://maps.google.com/?q=${post.latitude},${post.longitude}`;
+                      import("react-native").then(({ Linking }) =>
+                        Linking.openURL(url),
+                      );
+                    }}
+                  />
                 </View>
               </View>
             )}
@@ -692,27 +633,8 @@ const styles = StyleSheet.create({
 
   /* Map box */
   mapBox: {
-    height: 160,
     borderRadius: 14,
     overflow: "hidden",
-    position: "relative",
-  },
-  mapDirectionsBtn: {
-    position: "absolute",
-    bottom: 10,
-    right: 10,
-    backgroundColor: "#1A1A1ACC",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  mapDirectionsBtnText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
   },
 
   /* Trust */

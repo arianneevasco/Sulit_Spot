@@ -1,11 +1,13 @@
+import MapPicker, { Coord, MapThumbnail } from "@/components/MapPicker.web";
+import { usePhotoPicker } from "@/hooks/usePhotoPicker";
 import { createPost } from "@/services/postService";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,17 +20,6 @@ import {
   View,
 } from "react-native";
 
-import type { Region } from "react-native-maps";
-let MapView: any = null;
-let Marker: any = null;
-if (Platform.OS !== "web") {
-  // Static import for native only
-  // @ts-ignore
-  MapView = require("react-native-maps").default;
-  // @ts-ignore
-  Marker = require("react-native-maps").Marker;
-}
-
 const PRIMARY = "#4ECBA4";
 const GRAY_BG = "#F5F6FA";
 const CATEGORIES = ["Food", "Items", "Tips"] as const;
@@ -38,14 +29,6 @@ const CATEGORY_COLORS: Record<Category, string> = {
   Food: "#4ECBA4",
   Items: "#5B9CF6",
   Tips: "#F6A94A",
-};
-
-// Default region: University of the Philippines Diliman
-const DEFAULT_REGION: Region = {
-  latitude: 14.6537,
-  longitude: 121.0685,
-  latitudeDelta: 0.008,
-  longitudeDelta: 0.008,
 };
 
 export default function AddPostScreen() {
@@ -59,46 +42,55 @@ export default function AddPostScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Map state
+  // Photo
+  const {
+    localUri,
+    setLocalUri,
+    uploading,
+    showActionSheet,
+    setShowActionSheet,
+    pickFromCamera,
+    pickFromGallery,
+    uploadPhoto,
+  } = usePhotoPicker();
+
+  // Map
   const [showMap, setShowMap] = useState(false);
-  const [loadingLocation, setLoadingLocation] = useState(false);
-  const [markerCoord, setMarkerCoord] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [mapRegion, setMapRegion] = useState<Region>(DEFAULT_REGION);
-  const [pinnedCoord, setPinnedCoord] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  const [pinnedCoord, setPinnedCoord] = useState<Coord | null>(null);
   const [pinnedAddress, setPinnedAddress] = useState<string | null>(null);
-  const mapRef = useRef<any>(null);
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!title.trim()) e.title = "Title is required.";
     if (!category) e.category = "Please select a category.";
     if (!location.trim()) e.location = "Location is required.";
+    if (!description.trim()) e.description = "Description is required.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    const postCategory: "Food" | "Item" | "Tip" =
-      category === "Items" ? "Item" : category === "Tips" ? "Tip" : "Food";
     setLoading(true);
     try {
+      // Upload photo first if one was picked
+      let photoURL: string | null = null;
+      if (localUri) {
+        photoURL = await uploadPhoto(localUri);
+      }
+
       await createPost({
         title,
         description,
-        category: postCategory,
+        category:
+          category === "Items" ? "Item" : category === "Tips" ? "Tip" : "Food",
         priceRange,
         locationText: location,
-        photoURL: null,
+        photoURL,
         latitude: pinnedCoord?.latitude ?? null,
         longitude: pinnedCoord?.longitude ?? null,
       });
+
       Alert.alert("Posted!", "Your find has been shared with the community.", [
         { text: "OK", onPress: () => router.replace("/(tabs)") },
       ]);
@@ -109,99 +101,30 @@ export default function AddPostScreen() {
     }
   };
 
-  const openMapPicker = async () => {
-    setShowMap(true);
-    setLoadingLocation(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        const coord = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-        };
-        const region: Region = {
-          ...coord,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        };
-        setMarkerCoord(coord);
-        setMapRegion(region);
-        mapRef.current?.animateToRegion(region, 600);
-      } else {
-        setMarkerCoord({
-          latitude: DEFAULT_REGION.latitude,
-          longitude: DEFAULT_REGION.longitude,
-        });
-      }
-    } catch {
-      setMarkerCoord({
-        latitude: DEFAULT_REGION.latitude,
-        longitude: DEFAULT_REGION.longitude,
-      });
-    } finally {
-      setLoadingLocation(false);
-    }
-  };
-
-  const handleMapPress = (e: any) => {
-    setMarkerCoord(e.nativeEvent.coordinate);
-  };
-
-  const handleMarkerDragEnd = (e: any) => {
-    setMarkerCoord(e.nativeEvent.coordinate);
-  };
-
-  const confirmPin = async () => {
-    if (!markerCoord) return;
-    setPinnedCoord(markerCoord);
-    try {
-      const results = await Location.reverseGeocodeAsync(markerCoord);
-      if (results.length > 0) {
-        const r = results[0];
-        const parts = [r.street, r.district, r.city].filter(Boolean);
-        const addr =
-          parts.join(", ") || r.formattedAddress || "Selected location";
-        setPinnedAddress(addr);
-        if (!location.trim()) setLocation(addr);
-      }
-    } catch {
-      setPinnedAddress(
-        `${markerCoord.latitude.toFixed(5)}, ${markerCoord.longitude.toFixed(5)}`,
-      );
-    }
+  const handlePinConfirm = (coord: Coord, address: string) => {
+    setPinnedCoord(coord);
+    setPinnedAddress(address);
+    if (!location.trim()) setLocation(address);
     setShowMap(false);
   };
 
   const removePin = () => {
     setPinnedCoord(null);
     setPinnedAddress(null);
-    setMarkerCoord(null);
   };
 
-  const recenterToMyLocation = async () => {
-    setLoadingLocation(true);
-    try {
-      const loc = await Location.getCurrentPositionAsync({});
-      const coord = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
-      const region: Region = {
-        ...coord,
-        latitudeDelta: 0.004,
-        longitudeDelta: 0.004,
-      };
-      setMarkerCoord(coord);
-      mapRef.current?.animateToRegion(region, 500);
-    } catch {
-      Alert.alert("Error", "Could not get your location.");
-    } finally {
-      setLoadingLocation(false);
-    }
+  const removePhoto = () => {
+    Alert.alert("Remove photo", "Remove the attached photo?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => setLocalUri(null),
+      },
+    ]);
   };
+
+  const isSubmitting = loading || uploading;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -209,6 +132,7 @@ export default function AddPostScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
@@ -226,18 +150,23 @@ export default function AddPostScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Title */}
           <Text style={styles.label}>Title</Text>
           <TextInput
             style={[styles.input, errors.title && styles.inputError]}
-            placeholder="e.g Siomai rice"
+            placeholder="e.g Siomai rice for 39 pesos"
             placeholderTextColor="#BDBDBD"
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(t) => {
+              setTitle(t);
+              setErrors((e) => ({ ...e, title: undefined! }));
+            }}
           />
           {errors.title ? (
             <Text style={styles.errText}>{errors.title}</Text>
           ) : null}
 
+          {/* Category */}
           <Text style={styles.label}>Category</Text>
           <View style={styles.catRow}>
             {CATEGORIES.map((cat) => (
@@ -268,12 +197,13 @@ export default function AddPostScreen() {
             <Text style={styles.errText}>{errors.category}</Text>
           ) : null}
 
+          {/* Price + Location */}
           <View style={styles.row2}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Price range</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g 40-50"
+                placeholder="e.g ₱35–₱50"
                 placeholderTextColor="#BDBDBD"
                 value={priceRange}
                 onChangeText={setPriceRange}
@@ -286,7 +216,10 @@ export default function AddPostScreen() {
                 placeholder="e.g Near Gate 2"
                 placeholderTextColor="#BDBDBD"
                 value={location}
-                onChangeText={setLocation}
+                onChangeText={(t) => {
+                  setLocation(t);
+                  setErrors((e) => ({ ...e, location: undefined! }));
+                }}
               />
               {errors.location ? (
                 <Text style={styles.errText}>{errors.location}</Text>
@@ -294,63 +227,87 @@ export default function AddPostScreen() {
             </View>
           </View>
 
+          {/* Description */}
           <Text style={styles.label}>Description</Text>
           <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Describe the find in detail..."
+            style={[
+              styles.input,
+              styles.textArea,
+              errors.description && styles.inputError,
+            ]}
+            placeholder="Describe the find — hours, quantity, where exactly..."
             placeholderTextColor="#BDBDBD"
             value={description}
-            onChangeText={setDescription}
+            onChangeText={(t) => {
+              setDescription(t);
+              setErrors((e) => ({ ...e, description: undefined! }));
+            }}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
           />
+          {errors.description ? (
+            <Text style={styles.errText}>{errors.description}</Text>
+          ) : null}
 
+          {/* ── Photo ── */}
           <Text style={styles.label}>
             Photo <Text style={styles.optional}>(Optional)</Text>
           </Text>
-          <TouchableOpacity style={styles.photoBox} activeOpacity={0.8}>
-            <View style={styles.photoIconBg}>
-              <Ionicons name="camera-outline" size={26} color={PRIMARY} />
-            </View>
-            <Text style={styles.photoText}>Camera or Gallery</Text>
-            <Text style={styles.photoSubText}>Tap to attach a photo</Text>
-          </TouchableOpacity>
 
-          {/* Map pin */}
+          {localUri ? (
+            // Preview of picked image
+            <View style={styles.photoPreview}>
+              <Image
+                source={{ uri: localUri }}
+                style={styles.previewImg}
+                resizeMode="cover"
+              />
+              {uploading && (
+                <View style={styles.uploadOverlay}>
+                  <ActivityIndicator color="#fff" size="large" />
+                  <Text style={styles.uploadPct}>Uploading…</Text>
+                </View>
+              )}
+              {!uploading && (
+                <TouchableOpacity
+                  style={styles.removePhotoBtn}
+                  onPress={removePhoto}
+                >
+                  <Ionicons name="close-circle" size={26} color="#fff" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.changePhotoBtn}
+                onPress={() => setShowActionSheet(true)}
+              >
+                <Ionicons name="camera-outline" size={14} color="#fff" />
+                <Text style={styles.changePhotoBtnText}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            // Pick button
+            <TouchableOpacity
+              style={styles.photoBox}
+              activeOpacity={0.8}
+              onPress={() => setShowActionSheet(true)}
+            >
+              <View style={styles.photoIconBg}>
+                <Ionicons name="camera-outline" size={26} color={PRIMARY} />
+              </View>
+              <Text style={styles.photoText}>Camera or Gallery</Text>
+              <Text style={styles.photoSubText}>Tap to attach a photo</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* ── Map pin ── */}
           <Text style={styles.label}>
             Map pin <Text style={styles.optional}>(Optional)</Text>
           </Text>
 
           {pinnedCoord ? (
             <View style={styles.pinnedBox}>
-              {Platform.OS !== "web" && MapView && Marker ? (
-                <MapView
-                  style={styles.miniMap}
-                  region={{
-                    latitude: pinnedCoord.latitude,
-                    longitude: pinnedCoord.longitude,
-                    latitudeDelta: 0.004,
-                    longitudeDelta: 0.004,
-                  }}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
-                  pitchEnabled={false}
-                  rotateEnabled={false}
-                  pointerEvents="none"
-                >
-                  <Marker coordinate={pinnedCoord} pinColor={PRIMARY} />
-                </MapView>
-              ) : (
-                <View
-                  style={[
-                    styles.miniMap,
-                    { alignItems: "center", justifyContent: "center" },
-                  ]}
-                >
-                  <Text>Map preview not available on web</Text>
-                </View>
-              )}
+              <MapThumbnail coord={pinnedCoord} />
               <View style={styles.pinnedFooter}>
                 <Ionicons name="location" size={14} color={PRIMARY} />
                 <Text style={styles.pinnedAddr} numberOfLines={1}>
@@ -358,15 +315,12 @@ export default function AddPostScreen() {
                     `${pinnedCoord.latitude.toFixed(5)}, ${pinnedCoord.longitude.toFixed(5)}`}
                 </Text>
                 <TouchableOpacity
-                  onPress={openMapPicker}
+                  onPress={() => setShowMap(true)}
                   style={styles.pinnedEdit}
                 >
                   <Text style={styles.pinnedEditText}>Edit</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={removePin}
-                  style={styles.pinnedRemove}
-                >
+                <TouchableOpacity onPress={removePin}>
                   <Ionicons name="close-circle" size={18} color="#EF4444" />
                 </TouchableOpacity>
               </View>
@@ -375,7 +329,7 @@ export default function AddPostScreen() {
             <TouchableOpacity
               style={styles.mapBox}
               activeOpacity={0.8}
-              onPress={openMapPicker}
+              onPress={() => setShowMap(true)}
             >
               <View style={styles.mapIconBg}>
                 <Ionicons name="location-outline" size={26} color={PRIMARY} />
@@ -387,13 +341,14 @@ export default function AddPostScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Submit */}
           <TouchableOpacity
-            style={[styles.submitBtn, loading && { opacity: 0.7 }]}
+            style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]}
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={isSubmitting}
             activeOpacity={0.85}
           >
-            {loading ? (
+            {isSubmitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <>
@@ -407,111 +362,67 @@ export default function AddPostScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Map picker modal */}
+      {/* ── Photo action sheet ── */}
       <Modal
-        visible={showMap}
+        visible={showActionSheet}
+        transparent
         animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowMap(false)}
+        onRequestClose={() => setShowActionSheet(false)}
       >
-        <SafeAreaView style={styles.modalSafe}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity
-              onPress={() => setShowMap(false)}
-              style={styles.modalCancelBtn}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Drop a pin</Text>
-            <View style={{ width: 64 }} />
-          </View>
-
-          <Text style={styles.modalHint}>
-            Tap the map or drag the pin to set the exact location
-          </Text>
-
-          <View style={styles.mapContainer}>
-            {Platform.OS !== "web" && MapView && Marker ? (
-              <>
-                {loadingLocation && (
-                  <View style={styles.mapOverlay}>
-                    <ActivityIndicator color={PRIMARY} size="large" />
-                    <Text style={styles.mapOverlayText}>
-                      Finding your location…
-                    </Text>
-                  </View>
-                )}
-                <MapView
-                  ref={mapRef}
-                  style={StyleSheet.absoluteFillObject}
-                  initialRegion={mapRegion}
-                  onPress={handleMapPress}
-                  showsUserLocation
-                  showsMyLocationButton={false}
-                >
-                  {markerCoord && (
-                    <Marker
-                      coordinate={markerCoord}
-                      draggable
-                      onDragEnd={handleMarkerDragEnd}
-                      pinColor={PRIMARY}
-                    />
-                  )}
-                </MapView>
-
-                <TouchableOpacity
-                  style={styles.myLocBtn}
-                  onPress={recenterToMyLocation}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="locate" size={20} color={PRIMARY} />
-                </TouchableOpacity>
-              </>
-            ) : (
-              <View
-                style={[
-                  styles.mapOverlay,
-                  { alignItems: "center", justifyContent: "center" },
-                ]}
-              >
-                <Text>Map picker not available on web</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.modalFooter}>
-            {markerCoord ? (
-              <View style={styles.coordRow}>
-                <Ionicons name="location" size={16} color={PRIMARY} />
-                <Text style={styles.coordText}>
-                  {markerCoord.latitude.toFixed(5)}° N,{" "}
-                  {markerCoord.longitude.toFixed(5)}° E
-                </Text>
-              </View>
-            ) : (
-              <Text style={styles.coordHint}>Tap anywhere on the map</Text>
-            )}
+        <TouchableOpacity
+          style={styles.sheetOverlay}
+          activeOpacity={1}
+          onPress={() => setShowActionSheet(false)}
+        >
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Add a photo</Text>
 
             <TouchableOpacity
-              style={[
-                styles.confirmBtn,
-                !markerCoord && styles.confirmBtnDisabled,
-              ]}
-              onPress={confirmPin}
-              disabled={!markerCoord}
-              activeOpacity={0.85}
+              style={styles.sheetBtn}
+              onPress={pickFromCamera}
+              activeOpacity={0.8}
             >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={18}
-                color="#fff"
-              />
-              <Text style={styles.confirmBtnText}>Confirm location</Text>
+              <View style={styles.sheetIconBg}>
+                <Ionicons name="camera-outline" size={22} color={PRIMARY} />
+              </View>
+              <View>
+                <Text style={styles.sheetBtnLabel}>Take a photo</Text>
+                <Text style={styles.sheetBtnSub}>Use your camera</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetBtn}
+              onPress={pickFromGallery}
+              activeOpacity={0.8}
+            >
+              <View style={styles.sheetIconBg}>
+                <Ionicons name="images-outline" size={22} color={PRIMARY} />
+              </View>
+              <View>
+                <Text style={styles.sheetBtnLabel}>Choose from gallery</Text>
+                <Text style={styles.sheetBtnSub}>Pick from your photos</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.sheetBtn, styles.sheetCancelBtn]}
+              onPress={() => setShowActionSheet(false)}
+            >
+              <Text style={styles.sheetCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </TouchableOpacity>
       </Modal>
+
+      {/* ── Map picker ── */}
+      <MapPicker
+        visible={showMap}
+        onClose={() => setShowMap(false)}
+        onConfirm={handlePinConfirm}
+        initialCoord={pinnedCoord}
+      />
     </SafeAreaView>
   );
 }
@@ -570,6 +481,8 @@ const styles = StyleSheet.create({
   },
   catText: { fontSize: 13, fontWeight: "700", color: "#888" },
   row2: { flexDirection: "row", gap: 12 },
+
+  /* Photo */
   photoBox: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -590,6 +503,39 @@ const styles = StyleSheet.create({
   },
   photoText: { fontSize: 14, fontWeight: "700", color: "#333" },
   photoSubText: { fontSize: 12, color: "#aaa" },
+  photoPreview: {
+    height: 180,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: PRIMARY,
+    position: "relative",
+  },
+  previewImg: { width: "100%", height: "100%" },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  uploadPct: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  removePhotoBtn: { position: "absolute", top: 8, right: 8 },
+  changePhotoBtn: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  changePhotoBtnText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+
+  /* Map */
   mapBox: {
     backgroundColor: "#E8F5F0",
     borderRadius: 16,
@@ -617,14 +563,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#fff",
   },
-  miniMap: { height: 140, width: "100%" },
   pinnedFooter: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 6,
-    backgroundColor: "#fff",
   },
   pinnedAddr: { flex: 1, fontSize: 12, fontWeight: "600", color: "#333" },
   pinnedEdit: {
@@ -634,7 +578,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   pinnedEditText: { fontSize: 11, fontWeight: "700", color: PRIMARY },
-  pinnedRemove: { padding: 2 },
+
+  /* Submit */
   submitBtn: {
     backgroundColor: "#1A1A1A",
     borderRadius: 14,
@@ -647,70 +592,62 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   submitText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  modalSafe: { flex: 1, backgroundColor: "#fff" },
-  modalHeader: {
+
+  /* Action sheet */
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E0E0E0",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#1A1A1A",
+    marginBottom: 16,
+  },
+  sheetBtn: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
+    gap: 14,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    borderBottomColor: "#F5F5F5",
   },
-  modalCancelBtn: { padding: 4 },
-  modalCancelText: { fontSize: 14, color: "#666", fontWeight: "600" },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: "#1A1A1A" },
-  modalHint: {
-    fontSize: 12,
-    color: "#888",
-    textAlign: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-  },
-  mapContainer: { flex: 1, position: "relative" },
-  mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10,
-    gap: 12,
-  },
-  mapOverlayText: { fontSize: 13, color: "#666" },
-  myLocBtn: {
-    position: "absolute",
-    bottom: 16,
-    right: 16,
+  sheetIconBg: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  modalFooter: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    gap: 10,
-  },
-  coordRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  coordText: { fontSize: 13, fontWeight: "600", color: "#444" },
-  coordHint: { fontSize: 13, color: "#aaa", textAlign: "center" },
-  confirmBtn: {
-    backgroundColor: PRIMARY,
     borderRadius: 12,
-    height: 50,
-    flexDirection: "row",
+    backgroundColor: `${PRIMARY}15`,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  confirmBtnDisabled: { opacity: 0.45 },
-  confirmBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  sheetBtnLabel: { fontSize: 14, fontWeight: "700", color: "#1A1A1A" },
+  sheetBtnSub: { fontSize: 12, color: "#888", marginTop: 2 },
+  sheetCancelBtn: {
+    borderBottomWidth: 0,
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  sheetCancelText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#888",
+    textAlign: "center",
+    flex: 1,
+  },
 });
