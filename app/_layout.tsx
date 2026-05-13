@@ -1,8 +1,8 @@
-import { useAuth } from "@/hooks/useAuth";
-import { useNotifications } from "@/hooks/useNotifications";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { useAuth } from "../hooks/useAuth";
+import { useNotifications } from "../hooks/useNotifications";
 
 export default function RootLayout() {
   const { user, loading } = useAuth();
@@ -35,14 +35,13 @@ export default function RootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
       <Stack.Screen name="add" options={{ presentation: "modal" }} />
       <Stack.Screen name="detail" />
       <Stack.Screen name="edit" options={{ presentation: "modal" }} />
-      <Stack.Screen name="edit-profile" options={{ presentation: "modal" }} />
+      <Stack.Screen name="editprofile" options={{ presentation: "modal" }} />
     </Stack>
   );
 }

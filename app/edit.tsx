@@ -31,7 +31,7 @@ type Category = (typeof CATEGORIES)[number];
 const CATEGORY_COLORS: Record<Category, string> = {
   Food: "#4ECBA4",
   Items: "#5B9CF6",
-  Tips: "#F6A94A",
+  Tips: "#9B5DE5",
 };
 
 export default function EditPostScreen() {
@@ -69,11 +69,20 @@ export default function EditPostScreen() {
   const [pinnedCoord, setPinnedCoord] = useState<Coord | null>(null);
   const [pinnedAddress, setPinnedAddress] = useState<string | null>(null);
 
+  // Normalize Firestore category values ("Item"→"Items", "Tip"→"Tips") to match UI buttons
+  const normalizeCategory = (cat: string): Category => {
+    if (cat === "Item") return "Items";
+    if (cat === "Tip") return "Tips";
+    if ((["Food", "Items", "Tips"] as string[]).includes(cat))
+      return cat as Category;
+    return "Food";
+  };
+
   // Hydrate form once the post loads (only once)
   useEffect(() => {
     if (post && !hydrated) {
       setTitle(post.title ?? "");
-      setCategory((post.category as Category) ?? "Food");
+      setCategory(normalizeCategory(post.category ?? "Food"));
       setPriceRange(post.priceRange ?? "");
       setLocation(post.locationText ?? "");
       setDescription(post.description ?? "");
@@ -116,9 +125,13 @@ export default function EditPostScreen() {
         photoURL = null;
       }
 
+      // Normalize UI category back to Firestore format before saving
+      const firestoreCategory =
+        category === "Items" ? "Item" : category === "Tips" ? "Tip" : "Food";
+
       await updatePost(id, {
         title,
-        category,
+        category: firestoreCategory,
         priceRange,
         locationText: location,
         description,
@@ -128,9 +141,7 @@ export default function EditPostScreen() {
           : { latitude: null, longitude: null }),
       });
 
-      Alert.alert("Saved!", "Your post has been updated.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      router.back();
     } catch (e: any) {
       Alert.alert("Error", e.message || "Could not save changes.");
     } finally {

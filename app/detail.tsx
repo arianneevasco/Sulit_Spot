@@ -1,11 +1,3 @@
-import { MapPreview } from "@/components/MapPicker";
-import StarRating from "@/components/StarRating";
-import { useAuth } from "@/hooks/useAuth";
-import { useComments } from "@/hooks/useComments";
-import { usePostDetail } from "@/hooks/usePostDetails";
-import { useRatings } from "@/hooks/useRatings";
-import { addComment } from "@/services/commentService";
-import { reportPost, voteAccuracy } from "@/services/postService";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -19,9 +11,18 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { MapPreview } from "../components/MapPicker";
+import StarRating from "../components/StarRating";
+import { useAuth } from "../hooks/useAuth";
+import { useComments } from "../hooks/useComments";
+import { usePostDetail } from "../hooks/usePostDetails";
+import { useRatings } from "../hooks/useRatings";
+import { addComment } from "../services/commentService";
+import { reportPost, voteAccuracy } from "../services/postService";
 
 const PRIMARY = "#4ECBA4";
 const DANGER = "#EF4444";
@@ -476,43 +477,18 @@ export default function DetailScreen() {
 
         {/* ── Comment input ── */}
         <View style={styles.commentInput}>
-          <View style={styles.commentInputInner}>
-            <Ionicons
-              name="chatbubble-outline"
-              size={16}
-              color="#bbb"
-              style={{ marginRight: 4 }}
-            />
-            <View style={{ flex: 1 }} onStartShouldSetResponder={() => true}>
-              <Text
-                style={styles.commentPlaceholder}
-                onPress={() => {
-                  if (!user) router.push("/login");
-                }}
-              >
-                {commentText ||
-                  (user ? "Add a comment..." : "Login to comment")}
-              </Text>
-            </View>
-          </View>
-          {user && (
+          {user ? (
             <View style={styles.commentInputRow}>
-              <View
+              <TextInput
                 style={styles.commentTextInputWrap}
-                pointerEvents="box-none"
-              >
-                <Ionicons name="chatbubble-outline" size={16} color="#bbb" />
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.commentPlaceholder,
-                      commentText && { color: "#222" },
-                    ]}
-                  >
-                    {commentText || "Add a comment..."}
-                  </Text>
-                </View>
-              </View>
+                placeholder="Add a comment..."
+                placeholderTextColor="#bbb"
+                value={commentText}
+                onChangeText={setCommentText}
+                returnKeyType="send"
+                onSubmitEditing={handleSendComment}
+                editable={!sending}
+              />
               <TouchableOpacity
                 style={[styles.sendBtn, sending && { opacity: 0.6 }]}
                 onPress={handleSendComment}
@@ -526,6 +502,20 @@ export default function DetailScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.commentInputInner}
+              onPress={() => router.push("/login")}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="chatbubble-outline"
+                size={16}
+                color="#bbb"
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.commentPlaceholder}>Login to comment</Text>
+            </TouchableOpacity>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -779,12 +769,11 @@ const styles = StyleSheet.create({
   },
   commentTextInputWrap: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    fontSize: 14,
+    color: "#222",
     backgroundColor: "#F5F6FA",
     borderRadius: 24,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
   },
   sendBtn: {

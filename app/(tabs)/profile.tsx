@@ -1,5 +1,6 @@
+import { useAuth } from "@/hooks/useAuth";
 import { logoutUser } from "@/services/authService";
-import { auth, db } from "@/services/firebase";
+import { db } from "@/services/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
@@ -27,7 +28,12 @@ type UserStats = { postsCount: number; avgRating: number };
 
 async function fetchUserStats(uid: string): Promise<UserStats> {
   try {
-    const postsQ = query(collection(db, "posts"), where("userId", "==", uid));
+    // Only count active (non-archived) posts for profile stats
+    const postsQ = query(
+      collection(db, "posts"),
+      where("userId", "==", uid),
+      where("isArchived", "==", false),
+    );
     const countSnap = await getCountFromServer(postsQ);
     const postsCount = countSnap.data().count;
 
@@ -53,7 +59,7 @@ async function fetchUserStats(uid: string): Promise<UserStats> {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const user = auth.currentUser;
+  const { user } = useAuth();
   const displayName = user?.displayName ?? "User";
   const email = user?.email ?? "";
 
@@ -63,6 +69,7 @@ export default function ProfileScreen() {
   });
   const [statsLoading, setStatsLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -72,25 +79,15 @@ export default function ProfileScreen() {
     });
   }, [user?.uid]);
 
-  const handleLogout = () => {
-    Alert.alert("Log out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log out",
-        style: "destructive",
-        onPress: async () => {
-          setLoggingOut(true);
-          try {
-            await logoutUser();
-            router.replace("/login");
-          } catch (e: any) {
-            Alert.alert("Error", e.message || "Failed to log out.");
-          } finally {
-            setLoggingOut(false);
-          }
-        },
-      },
-    ]);
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logoutUser();
+      router.replace("/login");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to log out.");
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -192,16 +189,41 @@ export default function ProfileScreen() {
         </View>
 
         {/* ── Log out button ── */}
-        <TouchableOpacity
-          style={[styles.logoutBtn, loggingOut && styles.logoutBtnDisabled]}
-          onPress={handleLogout}
-          disabled={loggingOut}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.logoutText}>
-            {loggingOut ? "Logging out…" : "Log out"}
-          </Text>
-        </TouchableOpacity>
+        {!confirmingLogout ? (
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={() => setConfirmingLogout(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.logoutText}>Log out</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.logoutConfirm}>
+            <Text style={styles.logoutConfirmText}>Are you sure?</Text>
+            <View style={styles.logoutConfirmRow}>
+              <TouchableOpacity
+                style={styles.logoutCancelBtn}
+                onPress={() => setConfirmingLogout(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.logoutCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.logoutConfirmBtn,
+                  loggingOut && { opacity: 0.6 },
+                ]}
+                onPress={handleLogout}
+                disabled={loggingOut}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.logoutConfirmBtnText}>
+                  {loggingOut ? "Logging out…" : "Yes, log out"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -318,4 +340,40 @@ const styles = StyleSheet.create({
   },
   logoutBtnDisabled: { opacity: 0.5 },
   logoutText: { fontSize: 15, fontWeight: "600", color: "#1A1A1A" },
+  logoutConfirm: {
+    marginHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "#EF4444",
+    backgroundColor: "#FEF2F2",
+    padding: 16,
+    gap: 12,
+  },
+  logoutConfirmText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1A1A1A",
+    textAlign: "center",
+  },
+  logoutConfirmRow: { flexDirection: "row", gap: 10 },
+  logoutCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#DDD",
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutCancelText: { fontSize: 14, fontWeight: "600", color: "#555" },
+  logoutConfirmBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoutConfirmBtnText: { fontSize: 14, fontWeight: "700", color: "#fff" },
 });

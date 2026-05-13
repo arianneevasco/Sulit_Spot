@@ -1,9 +1,9 @@
 import {
-    DocumentData,
-    onSnapshot,
-    Query,
-    QuerySnapshot,
-    Unsubscribe,
+  DocumentData,
+  onSnapshot,
+  Query,
+  QuerySnapshot,
+  Unsubscribe,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import { getMyPostsQuery } from "../services/postService";
@@ -37,6 +37,7 @@ export const useMyPosts = (userId: string | undefined) => {
         if (!isMounted) return;
         setError("Failed to load your posts.");
         setLoading(false);
+        // Do NOT clear posts — keep showing cached data while offline
       },
     );
 

@@ -20,8 +20,10 @@ const PRIMARY = "#4ECBA4";
 const CATEGORIES = ["All", "Food", "Items", "Tips"];
 const CATEGORY_COLORS: Record<string, string> = {
   Food: "#4ECBA4",
+  Item: "#5B9CF6",
   Items: "#5B9CF6",
-  Tips: "#F6A94A",
+  Tip: "#9B5DE5",
+  Tips: "#9B5DE5",
 };
 
 // Maps UI label → Firestore value

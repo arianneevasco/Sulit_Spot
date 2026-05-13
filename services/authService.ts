@@ -10,11 +10,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut,
-    updateEmail,
-    updateProfile,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  updateEmail,
+  updateProfile,
 } from "firebase/auth";
 import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -73,12 +73,14 @@ export const loginUser = async (email: string, password: string) => {
 };
 
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
-// Clears FCM token first so push notifications stop going to this device
+// Clears FCM token first so push notifications stop going to this device.
+// FCM update is fire-and-forget — we never block the actual sign-out on it,
+// because a network hiccup or rules error would otherwise trap the user.
 export const logoutUser = async () => {
   const user = auth.currentUser;
   if (user) {
-    // Remove token — notifications won't fire to logged-out users
-    await updateDoc(doc(db, "users", user.uid), { fcmToken: null });
+    // Non-blocking: if this fails (network / rules) the logout still succeeds
+    updateDoc(doc(db, "users", user.uid), { fcmToken: null }).catch(() => {});
   }
   await signOut(auth);
 };

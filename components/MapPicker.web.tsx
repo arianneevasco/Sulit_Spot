@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Clipboard,
   Modal,
   Platform,
@@ -21,6 +22,29 @@ type Props = {
   initialCoord?: Coord | null;
 };
 
+// ── Nominatim reverse geocoding ──────────────────────────────────────────────
+async function reverseGeocode(coord: Coord): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${coord.latitude}&lon=${coord.longitude}&format=json`,
+      { headers: { "Accept-Language": "en" } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data.address ?? {};
+    const parts = [
+      a.road ?? a.pedestrian ?? a.footway,
+      a.neighbourhood ?? a.suburb ?? a.village ?? a.hamlet,
+      a.city ?? a.town ?? a.municipality ?? a.county,
+      a.state ?? a.region,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : (data.display_name ?? null);
+  } catch {
+    return null;
+  }
+}
+
+// ── Leaflet HTML (with search bar) ──────────────────────────────────────────
 function buildLeafletHTML(
   lat: number,
   lng: number,
@@ -34,26 +58,80 @@ function buildLeafletHTML(
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
     body { width: 100%; height: 100vh; overflow: hidden; }
     #map { width: 100%; height: 100%; }
+
+    #searchBox {
+      position: absolute; top: 10px; left: 10px; right: 10px;
+      z-index: 1000; display: flex; gap: 6px;
+    }
+    #searchInput {
+      flex: 1; height: 40px; border-radius: 20px;
+      border: none; padding: 0 16px;
+      font-size: 14px; color: #222;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+      outline: none;
+    }
+    #searchInput::placeholder { color: #bbb; }
+    #searchBtn {
+      width: 40px; height: 40px; border-radius: 20px;
+      background: #4ECBA4; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18); flex-shrink: 0;
+      font-size: 17px;
+    }
+    #searchBtn:active { opacity: 0.8; }
+
+    #results {
+      position: absolute; top: 58px; left: 10px; right: 10px;
+      z-index: 1001; background: #fff; border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      max-height: 220px; overflow-y: auto; display: none;
+    }
+    .result-item {
+      padding: 11px 16px; font-size: 13px; color: #333;
+      cursor: pointer; border-bottom: 1px solid #F0F0F0; line-height: 1.4;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-item:hover { background: #F5FEFA; }
+    .place-name { font-weight: 600; color: #1a1a1a; }
+    .place-sub { color: #888; font-size: 12px; margin-top: 2px; }
+
     .locate-btn {
-      position: absolute; bottom: 16px; right: 16px;
-      z-index: 999; width: 44px; height: 44px;
-      background: #fff; border-radius: 22px;
+      position: absolute; bottom: 16px; right: 16px; z-index: 999;
+      width: 44px; height: 44px; background: #fff; border-radius: 22px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; border: none; font-size: 18px;
     }
+
+    .spinner-wrap {
+      position: absolute; top: 18px; right: 58px; z-index: 1002;
+      display: none; align-items: center; justify-content: center;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid #ddd; border-top-color: #4ECBA4;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <button class="locate-btn" id="locateBtn" title="My location">📍</button>
+  <div id="searchBox">
+    <input id="searchInput" type="text" placeholder="Search a place..." autocomplete="off"/>
+    <button id="searchBtn">&#128269;</button>
+  </div>
+  <div class="spinner-wrap" id="spinner"><div class="spinner"></div></div>
+  <div id="results"></div>
+  <button class="locate-btn" id="locateBtn" title="My location">&#128205;</button>
   <script>
     var map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">Leaflet</a> &copy; OpenStreetMap contributors',
+      maxZoom: 19
     }).addTo(map);
 
     var greenIcon = L.divIcon({
@@ -67,6 +145,16 @@ function buildLeafletHTML(
       window.parent.postMessage(JSON.stringify({type:'coord',lat:lat,lng:lng}), '*');
     }
 
+    function placeMarker(latlng) {
+      if (marker) map.removeLayer(marker);
+      marker = L.marker(latlng, {icon: greenIcon, draggable: true}).addTo(map);
+      marker.on('dragend', function(e) {
+        var pos = e.target.getLatLng();
+        sendCoord(pos.lat, pos.lng);
+      });
+      sendCoord(latlng.lat, latlng.lng);
+    }
+
     if (marker) {
       sendCoord(${lat}, ${lng});
       marker.on('dragend', function(e) {
@@ -75,28 +163,72 @@ function buildLeafletHTML(
       });
     }
 
-    map.on('click', function(e) {
-      if (marker) { map.removeLayer(marker); }
-      marker = L.marker(e.latlng, {icon: greenIcon, draggable: true}).addTo(map);
-      marker.on('dragend', function(ev) {
-        var pos = ev.target.getLatLng();
-        sendCoord(pos.lat, pos.lng);
-      });
-      sendCoord(e.latlng.lat, e.latlng.lng);
+    map.on('click', function(e) { placeMarker(e.latlng); hideResults(); });
+
+    // ── Search ───────────────────────────────────────────────────────────────
+    var searchInput = document.getElementById('searchInput');
+    var searchBtn   = document.getElementById('searchBtn');
+    var resultsBox  = document.getElementById('results');
+    var spinner     = document.getElementById('spinner');
+    var searchTimer = null;
+
+    function showSpinner() { spinner.style.display = 'flex'; }
+    function hideSpinner() { spinner.style.display = 'none'; }
+    function hideResults() { resultsBox.style.display = 'none'; resultsBox.innerHTML = ''; }
+
+    function doSearch() {
+      var q = searchInput.value.trim();
+      if (!q) { hideResults(); return; }
+      showSpinner();
+      fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) + '&format=json&limit=6&addressdetails=1', {
+        headers: { 'Accept-Language': 'en' }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        hideSpinner();
+        if (!data || data.length === 0) {
+          resultsBox.innerHTML = '<div class="result-item" style="color:#aaa;text-align:center">No results found</div>';
+          resultsBox.style.display = 'block';
+          return;
+        }
+        resultsBox.innerHTML = '';
+        data.forEach(function(item) {
+          var a = item.address || {};
+          var name = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.village || item.name || '';
+          var sub  = [a.city || a.town || a.municipality || a.county, a.state, a.country].filter(Boolean).join(', ');
+          var div  = document.createElement('div');
+          div.className = 'result-item';
+          div.innerHTML = '<div class="place-name">' + (name || sub) + '</div>'
+                        + (sub && name ? '<div class="place-sub">' + sub + '</div>' : '');
+          div.addEventListener('click', function() {
+            var latlng = L.latLng(parseFloat(item.lat), parseFloat(item.lon));
+            map.setView(latlng, 17);
+            placeMarker(latlng);
+            searchInput.value = name || sub;
+            hideResults();
+          });
+          resultsBox.appendChild(div);
+        });
+        resultsBox.style.display = 'block';
+      })
+      .catch(function() { hideSpinner(); hideResults(); });
+    }
+
+    searchBtn.addEventListener('click', doSearch);
+    searchInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
+    searchInput.addEventListener('input', function() {
+      clearTimeout(searchTimer);
+      if (!searchInput.value.trim()) { hideResults(); return; }
+      searchTimer = setTimeout(doSearch, 500);
     });
 
+    // ── Locate me ────────────────────────────────────────────────────────────
     document.getElementById('locateBtn').addEventListener('click', function() {
       if (!navigator.geolocation) return;
       navigator.geolocation.getCurrentPosition(function(pos) {
         var latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
         map.setView(latlng, 17);
-        if (marker) { map.removeLayer(marker); }
-        marker = L.marker(latlng, {icon: greenIcon, draggable: true}).addTo(map);
-        marker.on('dragend', function(e) {
-          var p = e.target.getLatLng();
-          sendCoord(p.lat, p.lng);
-        });
-        sendCoord(latlng.lat, latlng.lng);
+        placeMarker(latlng);
       });
     });
   </script>
@@ -105,6 +237,7 @@ function buildLeafletHTML(
   return "data:text/html;charset=utf-8," + encodeURIComponent(html);
 }
 
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function MapPicker({
   visible,
   onClose,
@@ -116,6 +249,8 @@ export default function MapPicker({
   const [pickedCoord, setPickedCoord] = useState<Coord | null>(
     initialCoord ?? null,
   );
+  const [address, setAddress] = useState<string | null>(null);
+  const [loadingAddress, setLoadingAddress] = useState(false);
   const iframeRef = useRef<any>(null);
 
   useEffect(() => {
@@ -124,7 +259,14 @@ export default function MapPicker({
       try {
         const data = JSON.parse(event.data);
         if (data.type === "coord") {
-          setPickedCoord({ latitude: data.lat, longitude: data.lng });
+          const coord: Coord = { latitude: data.lat, longitude: data.lng };
+          setPickedCoord(coord);
+          setAddress(null);
+          setLoadingAddress(true);
+          reverseGeocode(coord).then((name) => {
+            setAddress(name);
+            setLoadingAddress(false);
+          });
         }
       } catch {}
     };
@@ -133,13 +275,18 @@ export default function MapPicker({
   }, []);
 
   useEffect(() => {
-    if (visible) setPickedCoord(initialCoord ?? null);
+    if (visible) {
+      setPickedCoord(initialCoord ?? null);
+      setAddress(null);
+    }
   }, [visible]);
 
   const handleConfirm = () => {
     if (!pickedCoord) return;
-    const address = `${pickedCoord.latitude.toFixed(5)}, ${pickedCoord.longitude.toFixed(5)}`;
-    onConfirm(pickedCoord, address);
+    const finalAddress =
+      address ??
+      `${pickedCoord.latitude.toFixed(5)}, ${pickedCoord.longitude.toFixed(5)}`;
+    onConfirm(pickedCoord, finalAddress);
   };
 
   const mapSrc = buildLeafletHTML(defaultLat, defaultLng, !!initialCoord);
@@ -152,6 +299,7 @@ export default function MapPicker({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
             <Text style={styles.cancelText}>Cancel</Text>
@@ -164,6 +312,7 @@ export default function MapPicker({
           Tap the map or drag the pin to set the exact location
         </Text>
 
+        {/* Map */}
         <View style={styles.mapWrap}>
           {Platform.OS === "web"
             ? ((
@@ -177,17 +326,26 @@ export default function MapPicker({
             : null}
         </View>
 
+        {/* Footer */}
         <View style={styles.footer}>
           {pickedCoord ? (
-            <View style={styles.coordRow}>
+            <View style={styles.locationRow}>
               <Ionicons name="location" size={16} color={PRIMARY} />
-              <Text style={styles.coordText}>
-                {pickedCoord.latitude.toFixed(5)}° N,{" "}
-                {pickedCoord.longitude.toFixed(5)}° E
-              </Text>
+              {loadingAddress ? (
+                <ActivityIndicator
+                  size="small"
+                  color={PRIMARY}
+                  style={{ marginLeft: 4 }}
+                />
+              ) : (
+                <Text style={styles.locationText} numberOfLines={2}>
+                  {address ??
+                    `${pickedCoord.latitude.toFixed(5)}° N, ${pickedCoord.longitude.toFixed(5)}° E`}
+                </Text>
+              )}
             </View>
           ) : (
-            <Text style={styles.coordHint}>Tap anywhere on the map</Text>
+            <Text style={styles.locationHint}>Tap anywhere on the map</Text>
           )}
           <TouchableOpacity
             style={[
@@ -206,6 +364,7 @@ export default function MapPicker({
   );
 }
 
+// ── MapThumbnail ──────────────────────────────────────────────────────────────
 export function MapThumbnail({ coord }: { coord: Coord }) {
   const html = `<!DOCTYPE html><html><head>
     <meta charset="utf-8"/>
@@ -231,6 +390,7 @@ export function MapThumbnail({ coord }: { coord: Coord }) {
   return null;
 }
 
+// ── MapPreview ────────────────────────────────────────────────────────────────
 export function MapPreview({
   coord,
   onDirections,
@@ -344,9 +504,9 @@ const styles = StyleSheet.create({
     borderTopColor: "#F0F0F0",
     backgroundColor: "#fff",
   },
-  coordRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  coordText: { fontSize: 13, fontWeight: "600", color: "#444" },
-  coordHint: { fontSize: 13, color: "#aaa", textAlign: "center" },
+  locationRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
+  locationText: { fontSize: 13, fontWeight: "600", color: "#444", flex: 1 },
+  locationHint: { fontSize: 13, color: "#aaa", textAlign: "center" },
   confirmBtn: {
     backgroundColor: PRIMARY,
     borderRadius: 14,

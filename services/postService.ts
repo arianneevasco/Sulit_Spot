@@ -13,19 +13,19 @@
 
 import type { Timestamp } from "firebase/firestore";
 import {
-    addDoc,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    increment,
-    onSnapshot,
-    orderBy,
-    query,
-    runTransaction,
-    serverTimestamp,
-    updateDoc,
-    where,
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  increment,
+  onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
@@ -254,14 +254,12 @@ export const getMyPosts = async (userId: string): Promise<Post[]> => {
   });
 };
 
-// Add this export — used by useMyPosts.js for onSnapshot
+// Used by useMyPosts for onSnapshot — returns ALL posts by this user
+// (active + archived). The UI decides how to display each status.
+// We intentionally omit the isArchived filter here so newly-archived posts
+// stay visible in My Posts (with a badge) instead of disappearing entirely.
 export const getMyPostsQuery = (userId: string) =>
-  query(
-    postsRef,
-    where("userId", "==", userId),
-    where("isArchived", "==", false),
-    orderBy("createdAt", "desc"),
-  );
+  query(postsRef, where("userId", "==", userId), orderBy("createdAt", "desc"));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE POST

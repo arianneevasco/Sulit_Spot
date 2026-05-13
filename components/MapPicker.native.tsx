@@ -47,6 +47,8 @@ export default function MapPicker({
       : DEFAULT_REGION,
   );
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [address, setAddress] = useState<string | null>(null);
+  const [loadingAddress, setLoadingAddress] = useState(false);
   const mapRef = useRef<MapView>(null);
 
   const flyToCurrentLocation = async () => {
@@ -75,6 +77,7 @@ export default function MapPicker({
       setMarkerCoord(coord);
       setMapRegion(region);
       mapRef.current?.animateToRegion(region, 600);
+      reverseGeocode(coord);
     } catch {
       Alert.alert("Error", "Could not get your location.");
     } finally {
@@ -82,18 +85,34 @@ export default function MapPicker({
     }
   };
 
-  const handleConfirm = async () => {
-    if (!markerCoord) return;
-    let address = `${markerCoord.latitude.toFixed(5)}, ${markerCoord.longitude.toFixed(5)}`;
+  const reverseGeocode = async (coord: Coord) => {
+    setLoadingAddress(true);
+    setAddress(null);
     try {
-      const results = await Location.reverseGeocodeAsync(markerCoord);
+      const results = await Location.reverseGeocodeAsync(coord);
       if (results.length > 0) {
         const r = results[0];
-        const parts = [r.street, r.district, r.city].filter(Boolean);
-        if (parts.length > 0) address = parts.join(", ");
+        const parts = [r.street, r.district, r.city, r.region].filter(Boolean);
+        if (parts.length > 0) setAddress(parts.join(", "));
       }
-    } catch {}
-    onConfirm(markerCoord, address);
+    } catch {
+      setAddress(null);
+    } finally {
+      setLoadingAddress(false);
+    }
+  };
+
+  const handleSetMarker = (coord: Coord) => {
+    setMarkerCoord(coord);
+    reverseGeocode(coord);
+  };
+
+  const handleConfirm = async () => {
+    if (!markerCoord) return;
+    const finalAddress =
+      address ??
+      `${markerCoord.latitude.toFixed(5)}, ${markerCoord.longitude.toFixed(5)}`;
+    onConfirm(markerCoord, finalAddress);
   };
 
   return (
@@ -129,7 +148,7 @@ export default function MapPicker({
             ref={mapRef}
             style={StyleSheet.absoluteFillObject}
             initialRegion={mapRegion}
-            onPress={(e) => setMarkerCoord(e.nativeEvent.coordinate)}
+            onPress={(e) => handleSetMarker(e.nativeEvent.coordinate)}
             showsUserLocation
             showsMyLocationButton={false}
           >
@@ -137,7 +156,7 @@ export default function MapPicker({
               <Marker
                 coordinate={markerCoord}
                 draggable
-                onDragEnd={(e) => setMarkerCoord(e.nativeEvent.coordinate)}
+                onDragEnd={(e) => handleSetMarker(e.nativeEvent.coordinate)}
                 pinColor={PRIMARY}
               />
             )}
@@ -157,10 +176,14 @@ export default function MapPicker({
           {markerCoord ? (
             <View style={styles.coordRow}>
               <Ionicons name="location" size={16} color={PRIMARY} />
-              <Text style={styles.coordText}>
-                {markerCoord.latitude.toFixed(5)}° N,{" "}
-                {markerCoord.longitude.toFixed(5)}° E
-              </Text>
+              {loadingAddress ? (
+                <ActivityIndicator size="small" color={PRIMARY} />
+              ) : (
+                <Text style={styles.coordText} numberOfLines={2}>
+                  {address ??
+                    `${markerCoord.latitude.toFixed(5)}° N, ${markerCoord.longitude.toFixed(5)}° E`}
+                </Text>
+              )}
             </View>
           ) : (
             <Text style={styles.coordHint}>Tap anywhere on the map</Text>
@@ -311,8 +334,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#F0F0F0",
     gap: 10,
   },
-  coordRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  coordText: { fontSize: 13, fontWeight: "600", color: "#444" },
+  coordRow: { flexDirection: "row", alignItems: "flex-start", gap: 6, flex: 1 },
+  coordText: { fontSize: 13, fontWeight: "600", color: "#444", flex: 1 },
   coordHint: { fontSize: 13, color: "#aaa", textAlign: "center" },
   confirmBtn: {
     backgroundColor: PRIMARY,

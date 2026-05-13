@@ -28,7 +28,7 @@ type Category = (typeof CATEGORIES)[number];
 const CATEGORY_COLORS: Record<Category, string> = {
   Food: "#4ECBA4",
   Items: "#5B9CF6",
-  Tips: "#F6A94A",
+  Tips: "#9B5DE5",
 };
 
 export default function AddPostScreen() {

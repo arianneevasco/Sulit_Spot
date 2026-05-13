@@ -23,31 +23,50 @@ const GRAY_BG = "#F5F6FA";
 const CATEGORY_COLORS: Record<string, string> = {
   Food: "#4ECBA4",
   Item: "#5B9CF6",
-  Tip: "#F6A94A",
+  Items: "#5B9CF6",
+  Tip: "#9B5DE5",
+  Tips: "#9B5DE5",
 };
 
 export default function MyPostsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { posts, loading, error } = useMyPosts(user?.uid);
 
   const handleArchive = (id: string, title: string) => {
-    Alert.alert("Archive Post", `Archive "${title}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Archive",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await archivePost(id);
-            // useMyPosts uses onSnapshot so the list updates automatically
-          } catch (e: any) {
-            Alert.alert("Error", e.message || "Could not archive post.");
-          }
+    Alert.alert(
+      "Archive Post",
+      `Archive "${title}"?\n\nIt will be removed from the public feed but still visible here.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Archive",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await archivePost(id);
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Could not archive post.");
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
+
+  // Show loading while auth is resolving so we don't flash "Login" to signed-in users
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>My Posts</Text>
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator color={PRIMARY} size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Not logged in
   if (!user) {
@@ -70,6 +89,9 @@ export default function MyPostsScreen() {
     );
   }
 
+  const activePosts = posts.filter((p) => !p.isArchived);
+  const archivedPosts = posts.filter((p) => p.isArchived);
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
@@ -77,7 +99,7 @@ export default function MyPostsScreen() {
         <Text style={styles.headerTitle}>My Posts</Text>
         {!loading && (
           <View style={styles.countBadge}>
-            <Text style={styles.countText}>{posts.length} Shared</Text>
+            <Text style={styles.countText}>{activePosts.length} Active</Text>
           </View>
         )}
       </View>
@@ -88,14 +110,28 @@ export default function MyPostsScreen() {
         </View>
       )}
 
-      {!loading && error && (
+      {/* Full error screen — only when we have NO data to show */}
+      {!loading && error && posts.length === 0 && (
         <View style={styles.center}>
           <Ionicons name="cloud-offline-outline" size={40} color="#ddd" />
           <Text style={styles.emptyText}>Could not load posts.</Text>
+          <Text style={styles.retryHint}>
+            Check your connection and try again.
+          </Text>
         </View>
       )}
 
-      {!loading && !error && (
+      {/* Small banner when error fires but we still have cached posts */}
+      {!loading && error && posts.length > 0 && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="wifi-outline" size={14} color="#92400E" />
+          <Text style={styles.errorBannerText}>
+            Showing cached posts — reconnecting…
+          </Text>
+        </View>
+      )}
+
+      {!loading && posts.length > 0 && (
         <FlatList
           data={posts}
           keyExtractor={(i) => i.id}
@@ -113,70 +149,105 @@ export default function MyPostsScreen() {
               </TouchableOpacity>
             </View>
           }
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
-                  {item.title}
-                </Text>
-                <View
-                  style={[
-                    styles.badge,
-                    {
-                      backgroundColor: CATEGORY_COLORS[item.category] ?? "#aaa",
-                    },
-                  ]}
-                >
-                  <Text style={styles.badgeText}>{item.category}</Text>
-                </View>
-              </View>
-
-              {(item.ratingAverage ?? 0) > 0 && (
-                <View style={styles.ratingRow}>
-                  <Ionicons name="star" size={11} color="#F6A94A" />
-                  <Text style={styles.ratingText}>
-                    {" "}
-                    {item.ratingAverage.toFixed(1)}
+          renderItem={({ item }) => {
+            const isArchived = !!item.isArchived;
+            return (
+              <View style={[styles.card, isArchived && styles.cardArchived]}>
+                <View style={styles.cardTop}>
+                  <Text
+                    style={[
+                      styles.cardTitle,
+                      isArchived && styles.cardTitleMuted,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {item.title}
                   </Text>
-                </View>
-              )}
-
-              <View style={styles.metaRow}>
-                <View style={styles.metaItem}>
-                  <Ionicons name="location-outline" size={13} color="#888" />
-                  <Text style={styles.metaText}>{item.locationText}</Text>
-                </View>
-                {item.priceRange ? (
-                  <View style={styles.metaItem}>
-                    <Text style={styles.peso}>₱</Text>
-                    <Text style={styles.metaText}>{item.priceRange}</Text>
+                  <View style={styles.badgeRow}>
+                    {isArchived && (
+                      <View style={styles.archivedBadge}>
+                        <Ionicons name="archive" size={10} color="#fff" />
+                        <Text style={styles.archivedBadgeText}>Archived</Text>
+                      </View>
+                    )}
+                    <View
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor: isArchived
+                            ? "#aaa"
+                            : (CATEGORY_COLORS[item.category] ?? "#aaa"),
+                        },
+                      ]}
+                    >
+                      <Text style={styles.badgeText}>{item.category}</Text>
+                    </View>
                   </View>
-                ) : null}
-              </View>
+                </View>
 
-              <View style={styles.divider} />
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={() =>
-                    router.push({ pathname: "/edit", params: { id: item.id } })
-                  }
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="create-outline" size={14} color={PRIMARY} />
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.archiveBtn}
-                  onPress={() => handleArchive(item.id, item.title)}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="archive-outline" size={14} color={DANGER} />
-                  <Text style={styles.archiveBtnText}>Archive</Text>
-                </TouchableOpacity>
+                {(item.ratingAverage ?? 0) > 0 && (
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={11} color="#F6A94A" />
+                    <Text style={styles.ratingText}>
+                      {" "}
+                      {item.ratingAverage.toFixed(1)}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.metaRow}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="location-outline" size={13} color="#888" />
+                    <Text style={styles.metaText}>{item.locationText}</Text>
+                  </View>
+                  {item.priceRange ? (
+                    <View style={styles.metaItem}>
+                      <Text style={styles.peso}>₱</Text>
+                      <Text style={styles.metaText}>{item.priceRange}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Only show action buttons for active (non-archived) posts */}
+                {!isArchived && (
+                  <>
+                    <View style={styles.divider} />
+                    <View style={styles.actions}>
+                      <TouchableOpacity
+                        style={styles.editBtn}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/edit",
+                            params: { id: item.id },
+                          })
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons
+                          name="create-outline"
+                          size={14}
+                          color={PRIMARY}
+                        />
+                        <Text style={styles.editBtnText}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.archiveBtn}
+                        onPress={() => handleArchive(item.id, item.title)}
+                        activeOpacity={0.85}
+                      >
+                        <Ionicons
+                          name="archive-outline"
+                          size={14}
+                          color={DANGER}
+                        />
+                        <Text style={styles.archiveBtnText}>Archive</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </SafeAreaView>
@@ -221,6 +292,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  cardArchived: {
+    backgroundColor: "#F9F9F9",
+    opacity: 0.75,
+  },
   cardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -233,6 +308,30 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1A1A1A",
     lineHeight: 20,
+  },
+  cardTitleMuted: {
+    color: "#999",
+    textDecorationLine: "line-through",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  archivedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "#999",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  archivedBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
   },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   badgeText: { color: "#fff", fontSize: 11, fontWeight: "700" },
@@ -276,6 +375,18 @@ const styles = StyleSheet.create({
   },
   archiveBtnText: { fontSize: 13, fontWeight: "700", color: DANGER },
   emptyText: { fontSize: 15, color: "#bbb", fontWeight: "600" },
+  retryHint: { fontSize: 12, color: "#ccc", marginTop: 4 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFF8E7",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F6A94A40",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  errorBannerText: { fontSize: 12, color: "#92400E", flex: 1 },
   loginBtn: {
     backgroundColor: PRIMARY,
     paddingHorizontal: 24,
